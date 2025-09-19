@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import ForeignKey, Integer, MetaData, String
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-metadata_obj = MetaData(schema="protocollum_schema")
 
-
-class Base(DeclarativeBase):  # type: ignore[override]
-    metadata = metadata_obj
+class Base(DeclarativeBase): ...
 
 
 class Foo(Base):
@@ -29,7 +26,7 @@ class Bar(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     data: Mapped[str] = mapped_column(String(50), nullable=False)
     foo_id: Mapped[int] = mapped_column(
-        ForeignKey("protocollum_schema.foo.id", ondelete="CASCADE"), unique=True
+        ForeignKey(Foo.id, ondelete="CASCADE"), unique=True
     )
     foo: Mapped[Foo] = relationship(back_populates="bar", uselist=False)
 

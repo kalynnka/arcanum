@@ -10,7 +10,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U protocollum -d protocollum_dev"]
       interval: 30s
@@ -23,8 +22,8 @@ services:
     image: dpage/pgadmin4:latest
     container_name: protocollum_pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@protocollum.local
-      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "8080:80"
     depends_on:

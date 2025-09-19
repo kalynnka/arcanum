@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, ClassVar, Self, Type, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from pydantic import (
     BaseModel,
@@ -10,7 +10,7 @@ from pydantic import (
     model_validator,
 )
 from sqlalchemy.inspection import inspect
-from sqlalchemy.orm import DeclarativeBase, LoaderCallableStatus
+from sqlalchemy.orm import LoaderCallableStatus
 
 T = TypeVar("T", bound="BaseProtocol")
 
@@ -19,19 +19,14 @@ class LoadedData: ...
 
 
 class BaseProtocol(BaseModel, ABC):
-    __provider__: ClassVar[Type[DeclarativeBase]]
-    __provided__: DeclarativeBase
+    __provider__: ClassVar[type[Any]]
+    __provided__: Any
 
     model_config = ConfigDict(from_attributes=True)
 
-    def __getattribute__(self, name):
-        value = object.__getattribute__(self, name)
-        return value
-
     def __setattr__(self, name: str, value: Any):
         super().__setattr__(name, value)
-        if self.__provided__ and name in type(self).model_fields:
-            setattr(self.__provided__, name, self.model_dump(include={name})[name])
+        setattr(self.__provided__, name, getattr(self, name))
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, BaseProtocol):
