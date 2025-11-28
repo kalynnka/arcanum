@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from arcanum.association import Relation
 from arcanum.base import BaseProtocol
 from tests.models import Bar as BarModel
@@ -12,7 +14,7 @@ class Foo(BaseProtocol):  # noqa: N801 - requested lowercase
 
     id: int | None = None
     name: str
-    bar: Relation[Bar]
+    bar: Relation[Optional[Bar]]
 
 
 class Bar(BaseProtocol):  # noqa: N801 - requested lowercase

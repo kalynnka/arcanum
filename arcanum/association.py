@@ -33,9 +33,12 @@ from sqlalchemy.util import greenlet_spawn
 if TYPE_CHECKING:
     from arcanum.base import BaseProtocol
 
-T_Protocol = TypeVar("T_Protocol", bound="BaseProtocol")
-P = ParamSpec("P")
 T = TypeVar("T")
+T_Protocol = TypeVar("T_Protocol", bound="BaseProtocol")
+OPT_Protocol = TypeVar("OPT_Protocol", bound="BaseProtocol | None")
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def is_association(t: type) -> bool:
@@ -53,14 +56,14 @@ def is_association(t: type) -> bool:
     return issubclass(arg, Association)
 
 
-class Association(Generic[T_Protocol], ABC):
+class Association(Generic[T], ABC):
     __generic_adaptors__: ClassVar[dict[type, TypeAdapter[Any]]] = {}
 
-    __args__: tuple[T_Protocol, ...]
-    __generic_protocol__: Type[T_Protocol]
+    __args__: tuple[T, ...]
+    __generic_protocol__: Type[T]
     __instance__: BaseProtocol
     __loaded__: bool
-    __payloads__: T_Protocol
+    __payloads__: T
 
     field_name: str
 
@@ -79,7 +82,7 @@ class Association(Generic[T_Protocol], ABC):
     @classmethod
     def __get_pydantic_generic_schema__(
         cls,
-        generic_type: Type[T_Protocol],
+        generic_type: Type[T],
         handler: GetCoreSchemaHandler,
     ) -> core_schema.CoreSchema:
         raise NotImplementedError()
@@ -87,14 +90,14 @@ class Association(Generic[T_Protocol], ABC):
     @classmethod
     def __get_pydantic_serialize_schema__(
         cls,
-        generic_type: Type[T_Protocol],
+        generic_type: Type[T],
         handler: GetCoreSchemaHandler,
     ) -> core_schema.SerSchema | None:
         raise NotImplementedError()
 
     @classmethod
     def __get_pydantic_core_schema__(
-        cls, source_type: Type[Association[T_Protocol]], handler: GetCoreSchemaHandler
+        cls, source_type: Type[Association[T]], handler: GetCoreSchemaHandler
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
 
@@ -107,7 +110,7 @@ class Association(Generic[T_Protocol], ABC):
             value: Any,
             handler: core_schema.ValidatorFunctionWrapHandler,
             info: core_schema.ValidationInfo,
-        ) -> Association[T_Protocol]:
+        ) -> Association[T]:
             if not info.field_name:
                 raise ValueError(
                     f"The association type {source_type} must be used as a model field."
@@ -143,7 +146,7 @@ class Association(Generic[T_Protocol], ABC):
         )
 
     @cached_property
-    def __validator__(self) -> TypeAdapter[T_Protocol]:
+    def __validator__(self) -> TypeAdapter[T]:
         if self.__generic_protocol__ not in self.__generic_adaptors__:
             self.__generic_adaptors__[self.__generic_protocol__] = TypeAdapter(
                 self.__generic_protocol__
@@ -162,7 +165,7 @@ class Association(Generic[T_Protocol], ABC):
     def __init__(
         self,
         field_name: str,
-        payloads: T_Protocol,
+        payloads: T,
     ):
         self.__instance__ = None  # type: ignore
         self.field_name = field_name
@@ -175,15 +178,15 @@ class Association(Generic[T_Protocol], ABC):
         self.__instance__ = instance
         self.field_name = field_name
 
-    def validate_python(self, value: Any) -> T_Protocol:
+    def validate_python(self, value: Any) -> T:
         """Validate the value against the type adapter."""
         return self.__validator__.validate_python(value)
 
 
-class Relation(Association[T_Protocol]):
+class Relation(Association[OPT_Protocol]):
     @classmethod
     def __get_pydantic_generic_schema__(
-        cls, generic_type: type[T_Protocol], handler: GetCoreSchemaHandler
+        cls, generic_type: type[OPT_Protocol], handler: GetCoreSchemaHandler
     ) -> core_schema.CoreSchema:
         return core_schema.union_schema(
             choices=[
@@ -196,9 +199,9 @@ class Relation(Association[T_Protocol]):
 
     @classmethod
     def __get_pydantic_serialize_schema__(
-        cls, generic_type: type[T_Protocol], handler: GetCoreSchemaHandler
+        cls, generic_type: type[OPT_Protocol], handler: GetCoreSchemaHandler
     ) -> core_schema.SerSchema | None:
-        def serialize(value: Relation[T_Protocol]) -> Any:
+        def serialize(value: Relation[OPT_Protocol]) -> Any:
             return value.__payloads__
 
         return core_schema.plain_serializer_function_ser_schema(serialize)
@@ -233,15 +236,17 @@ class Relation(Association[T_Protocol]):
 
     def prepare(self, instance: BaseProtocol, field_name: str):
         super().prepare(instance, field_name)
-        if not self.__loaded__ and self.__payloads__:
+        if not self.__loaded__ and self.__payloads__ is not None:
             self.__provided__ = self.__payloads__.__provided__
 
     @staticmethod
     def ensure_loaded(
-        func: Callable[Concatenate[Relation[T_Protocol], P], T],
-    ) -> Callable[Concatenate[Relation[T_Protocol], P], T]:
+        func: Callable[Concatenate[Relation[OPT_Protocol], P], R],
+    ) -> Callable[Concatenate[Relation[OPT_Protocol], P], R]:
         @wraps(func)
-        def wrapper(self: Relation[T_Protocol], *args: P.args, **kwargs: P.kwargs) -> T:
+        def wrapper(
+            self: Relation[OPT_Protocol], *args: P.args, **kwargs: P.kwargs
+        ) -> R:
             if not self.__loaded__:
                 self._load()
                 self.__loaded__ = True
@@ -251,7 +256,7 @@ class Relation(Association[T_Protocol]):
         return wrapper
 
     def _load(self) -> Self:
-        if self.__payloads__ and self.__payloads__.__provided__:
+        if self.__payloads__ is not None and self.__payloads__.__provided__:
             self.__provided__ = self.__payloads__.__provided__
         else:
             self.__payloads__ = self.validate_python(self.__provided__)
@@ -263,14 +268,14 @@ class Relation(Association[T_Protocol]):
 
     @property
     @ensure_loaded
-    def value(self) -> T_Protocol:
+    def value(self) -> OPT_Protocol:
         return self.__payloads__
 
     @value.setter
     @ensure_loaded
-    def value(self, object: T_Protocol):
+    def value(self, object: OPT_Protocol):
         object = self.validate_python(object)
-        if object:
+        if object is not None:
             self.__provided__ = object.__provided__
         else:
             self.__provided__ = None
@@ -343,19 +348,19 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
             return self.__list_validator__.validate_python(value)
         return self.__validator__.validate_python(value)
 
-    # def prepare(self, instance: BaseProtocol, field_name: str):
-    #     super().prepare(instance, field_name)
-    #     if not self.__loaded__ and self.__payloads__:
-    #         self.extend(self.__payloads__)
+    def prepare(self, instance: BaseProtocol, field_name: str):
+        super().prepare(instance, field_name)
+        if not self.__loaded__ and self.__payloads__:
+            self.extend(self.__payloads__)
 
     @staticmethod
     def ensure_loaded(
-        func: Callable[Concatenate[RelationCollection[T_Protocol], P], T],
-    ) -> Callable[Concatenate[RelationCollection[T_Protocol], P], T]:
+        func: Callable[Concatenate[RelationCollection[T_Protocol], P], R],
+    ) -> Callable[Concatenate[RelationCollection[T_Protocol], P], R]:
         @wraps(func)
         def wrapper(
             self: RelationCollection[T_Protocol], *args: P.args, **kwargs: P.kwargs
-        ) -> T:
+        ) -> R:
             if not self.__loaded__:
                 self._load()
                 self.__loaded__ = True

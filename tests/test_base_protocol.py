@@ -26,5 +26,5 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, test_session: Session):
 
     from sqlalchemy.sql import select
 
-    stmt = select(FooModel).where(FooModel.id == foo_id)
+    stmt = select(FooModel.id).where(FooModel.id == foo_id)
     pass
