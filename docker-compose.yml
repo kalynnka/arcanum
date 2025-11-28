@@ -1,18 +1,17 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: protocollum_postgres
+    container_name: arcanum_postgres
     environment:
-      POSTGRES_DB: protocollum_dev
-      POSTGRES_USER: protocollum
+      POSTGRES_DB: arcanum_dev
+      POSTGRES_USER: arcanum
       POSTGRES_PASSWORD: dev_password
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U protocollum -d protocollum_dev"]
+      test: ["CMD-SHELL", "pg_isready -U arcanum -d arcanum_dev"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -21,10 +20,10 @@ services:
   # Optional: pgAdmin for database management
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: protocollum_pgadmin
+    container_name: arcanum_pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@protocollum.local
-      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "8080:80"
     depends_on:

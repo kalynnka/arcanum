@@ -1,10 +1,10 @@
-# Protocollum
+# arcanum
 
-**Protocollum** is a Python library designed to seamlessly bind Pydantic schemas with various datasources, eliminating the need to manually create templates, factories, and utilities repeatedly. It provides a unified interface for working with different data backends while maintaining type safety and validation through Pydantic.
+**arcanum** is a Python library designed to seamlessly bind Pydantic schemas with various datasources, eliminating the need to manually create templates, factories, and utilities repeatedly. It provides a unified interface for working with different data backends while maintaining type safety and validation through Pydantic.
 
 ## 🎯 Purpose
 
-Modern applications often require integration with multiple data sources (databases, APIs, file systems, etc.), and developers frequently find themselves writing similar boilerplate code for each integration. Protocollum addresses this by:
+Modern applications often require integration with multiple data sources (databases, APIs, file systems, etc.), and developers frequently find themselves writing similar boilerplate code for each integration. arcanum addresses this by:
 
 - **Automatic Schema Binding**: Automatically generates database models, API clients, and data access patterns from Pydantic schemas
 - **Type Safety**: Leverages Pydantic's validation and type hints for runtime safety
@@ -32,8 +32,8 @@ Modern applications often require integration with multiple data sources (databa
 
 ```bash
 # Clone the repository
-git clone https://github.com/kalynnka/protocollum.git
-cd protocollum
+git clone https://github.com/kalynnka/arcanum.git
+cd arcanum
 
 # Install UV if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -57,7 +57,7 @@ pip install -e ".[dev]"
 
 ## 🐳 Development Environment
 
-Protocollum includes a Docker Compose setup for local development with PostgreSQL:
+arcanum includes a Docker Compose setup for local development with PostgreSQL:
 
 ### Start the Development Database
 
@@ -73,15 +73,15 @@ docker-compose --profile admin up -d
 
 - **Host**: localhost
 - **Port**: 5432
-- **Database**: protocollum_dev
-- **Username**: protocollum
+- **Database**: arcanum_dev
+- **Username**: arcanum
 - **Password**: dev_password
 
 ### pgAdmin Access (Optional)
 
 If you started with the admin profile:
 - **URL**: http://localhost:8080
-- **Email**: admin@protocollum.local
+- **Email**: admin@arcanum.local
 - **Password**: admin_password
 
 ### Stop Services
@@ -93,8 +93,8 @@ docker-compose down
 ## 🏗️ Project Structure
 
 ```
-protocollum/
-├── protocollum/           # Main package
+arcanum/
+├── arcanum/           # Main package
 ├── tests/                 # Test suite
 ├── docker/               # Docker configuration
 │   └── init.sql          # Database initialization
@@ -122,20 +122,20 @@ protocollum/
 
 4. **Code formatting**:
    ```bash
-   uv run black protocollum/
-   uv run isort protocollum/
+   uv run black arcanum/
+   uv run isort arcanum/
    ```
 
 5. **Type checking**:
    ```bash
-   uv run mypy protocollum/
+   uv run mypy arcanum/
    ```
 
 ## 📖 Quick Start
 
 ```python
 from pydantic import BaseModel
-from protocollum import DataSourceBinding
+from arcanum import DataSourceBinding
 
 # Define your schema
 class User(BaseModel):
@@ -173,8 +173,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- **Repository**: https://github.com/kalynnka/protocollum
-- **Issues**: https://github.com/kalynnka/protocollum/issues
+- **Repository**: https://github.com/kalynnka/arcanum
+- **Issues**: https://github.com/kalynnka/arcanum/issues
 - **Documentation**: Coming soon
 
 ## 🙏 Acknowledgments

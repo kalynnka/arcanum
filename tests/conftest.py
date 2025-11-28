@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from tests.models import Bar, Base, Foo
+
+# Database URL points to the docker-compose postgres service exposed on localhost
+DB_URL = "postgresql+psycopg2://protocollum:dev_password@localhost:5432/protocollum_dev"
+
+
+@pytest.fixture(scope="session")
+def engine():
+    """Create a PostgreSQL engine, create all tables at session start and drop them at the end.
+
+    Ensures clean schema for each pytest invocation.
+    """
+    engine = create_engine(DB_URL, echo=False, future=True)
+
+    with engine.begin() as conn:
+        Base.metadata.drop_all(conn)
+        Base.metadata.create_all(conn)
+        conn.commit()
+
+    try:
+        yield engine
+    finally:  # Always drop tables even if tests failed
+        with engine.begin() as conn:
+            Base.metadata.drop_all(conn)
+            conn.commit()
+        engine.dispose()
+
+
+@pytest.fixture()
+def test_session(engine: Engine):
+    """Read-only / rollback session for tests that must never commit.
+
+    Keeps prior semantics of the old 'session' fixture: any attempt to commit raises.
+    """
+    SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    session = SessionLocal()
+
+    def commit():  # noqa: D401 - simple override
+        raise NotImplementedError(
+            "Commit is disabled in test_session to ensure isolation."
+        )
+
+    session.commit = commit  # type: ignore[assignment]
+
+    with session.begin():
+        try:
+            yield session
+        finally:
+            session.rollback()
+            session.close()
+
+
+@pytest.fixture()
+def session(engine: Engine):
+    """Writable session fixture allowing real commits.
+
+    Use when you need persisted rows visible to subsequent operations within the
+    same test. Each test gets a fresh transaction scope; data is not automatically
+    rolled back. Prefer 'test_session' unless you explicitly need commits.
+    """
+    SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with SessionLocal() as session:
+        try:
+            yield session
+        finally:
+            # Best effort cleanup: rollback any open transaction then close.
+            session.rollback()
+            session.close()
+
+
+@pytest.fixture()
+def foo_without_bar(session: Session):
+    """Persist and return a Foo without an associated Bar."""
+    foo = Foo(name="Foo Without Bar")
+    session.add(foo)
+    session.flush()  # populate PK
+    session.commit()
+    session.refresh(foo)
+    return foo
+
+
+@pytest.fixture()
+def foo_with_bar(session: Session):
+    """Persist and return a Foo that has an associated Bar (one-to-one)."""
+    bar = Bar(data="Bar Data", foo=Foo(name="Foo With Bar"))
+    session.add(bar)
+    session.flush()
+    session.commit()
+    session.refresh(bar)
+    return bar.foo
+
+
+@pytest.fixture()
+def bar_only(session: Session):
+    """Create a Foo + Bar but return only the Bar instance (convenience)."""
+    foo = Foo(name="Foo For Bar Only")
+    bar = Bar(data="Isolated Bar", foo=foo)
+    session.add(bar)
+    session.flush()
+    session.commit()
+    session.refresh(bar)
+    return bar
