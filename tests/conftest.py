@@ -4,10 +4,12 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from tests.models import Bar, Base, Foo
+from arcanum.base import validation_context
+from tests.models import metadata
+from tests.schemas import Bar, Foo
 
 # Database URL points to the docker-compose postgres service exposed on localhost
-DB_URL = "postgresql+psycopg2://protocollum:dev_password@localhost:5432/protocollum_dev"
+DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"
 
 
 @pytest.fixture(scope="session")
@@ -16,18 +18,18 @@ def engine():
 
     Ensures clean schema for each pytest invocation.
     """
-    engine = create_engine(DB_URL, echo=False, future=True)
+    engine = create_engine(DB_URL, echo=True, future=True)
 
     with engine.begin() as conn:
-        Base.metadata.drop_all(conn)
-        Base.metadata.create_all(conn)
+        metadata.drop_all(conn)
+        metadata.create_all(conn)
         conn.commit()
 
     try:
         yield engine
     finally:  # Always drop tables even if tests failed
         with engine.begin() as conn:
-            Base.metadata.drop_all(conn)
+            metadata.drop_all(conn)
             conn.commit()
         engine.dispose()
 
@@ -48,7 +50,7 @@ def test_session(engine: Engine):
 
     session.commit = commit  # type: ignore[assignment]
 
-    with session.begin():
+    with session.begin(), validation_context():
         try:
             yield session
         finally:
@@ -66,7 +68,7 @@ def session(engine: Engine):
     """
     SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
-    with SessionLocal() as session:
+    with SessionLocal() as session, validation_context():
         try:
             yield session
         finally:
@@ -78,12 +80,12 @@ def session(engine: Engine):
 @pytest.fixture()
 def foo_without_bar(session: Session):
     """Persist and return a Foo without an associated Bar."""
-    foo = Foo(name="Foo Without Bar")
+    foo = BarModel(name="Foo Without Bar")
     session.add(foo)
     session.flush()  # populate PK
     session.commit()
     session.refresh(foo)
-    return foo
+    return foo.__provided__
 
 
 @pytest.fixture()
@@ -94,7 +96,7 @@ def foo_with_bar(session: Session):
     session.flush()
     session.commit()
     session.refresh(bar)
-    return bar.foo
+    return bar.foo.value.__provided__
 
 
 @pytest.fixture()
@@ -106,4 +108,4 @@ def bar_only(session: Session):
     session.flush()
     session.commit()
     session.refresh(bar)
-    return bar
+    return bar.__provided__
