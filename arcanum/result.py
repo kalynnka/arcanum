@@ -18,6 +18,7 @@ from sqlalchemy import (
     IteratorResult,
     Result,
     Row,
+    RowMapping,
     ScalarResult,
 )
 from sqlalchemy.engine.result import (
@@ -239,8 +240,12 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             scalars_adapter=self.scalars_adapter,
         )
 
-    def freeze(self) -> FrozenResult[tuple[T]]:
-        raise NotImplementedError("AdaptedResult does not support freeze() yet.")
+    def freeze(self) -> AdaptedFrozenResult[_TP]:
+        return AdaptedFrozenResult(
+            self,
+            scalar_adapter=self.scalar_adapter,
+            scalars_adapter=self.scalars_adapter,
+        )
 
     def mappings(self) -> AdaptedMappingResult:
         return AdaptedMappingResult(
@@ -303,7 +308,7 @@ class AdaptedScalarResult(ScalarResult[_R]):
     def fetchall(self) -> tuple[_R]:
         return self.scalars_adapter.validate_python(self._allrows())
 
-    def fetchmany(self, size: int | None = None) -> tuple[T]:
+    def fetchmany(self, size: int | None = None) -> tuple[_R]:
         return self.scalars_adapter.validate_python(self._manyrow_getter(size))
 
     def all(self) -> tuple[_R]:
@@ -345,7 +350,7 @@ class AdaptedScalarResult(ScalarResult[_R]):
         )
 
 
-class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
+class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
     """A wrapper for a :class:`AdaptedResult` that returns dictionary
     values rather than :class:`_engine.Row` values.
 
@@ -354,8 +359,8 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
 
     """
 
-    scalar_adapter: TypeAdapter[T]
-    scalars_adapter: TypeAdapter[tuple[T]]
+    scalar_adapter: TypeAdapter
+    scalars_adapter: TypeAdapter
 
     __slots__ = ()
 
@@ -366,8 +371,8 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
     def __init__(
         self,
         result: Result[Any],
-        scalar_adapter: TypeAdapter[T],
-        scalars_adapter: TypeAdapter[tuple[T]],
+        scalar_adapter: TypeAdapter,
+        scalars_adapter: TypeAdapter,
     ):
         self._real_result = result
         self._unique_filter_state = result._unique_filter_state
@@ -393,7 +398,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
         r"""Establish the columns that should be returned in each row."""
         return self._column_slices(col_expressions)
 
-    def partitions(self, size: Optional[int] = None) -> Iterator[tuple[T]]:
+    def partitions(self, size: Optional[int] = None) -> Iterator[RowMapping]:
         """Iterate through sub-lists of elements of the size given.
 
         Equivalent to :meth:`AdaptedResult.partitions` except that
@@ -408,11 +413,11 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
             else:
                 break
 
-    def fetchall(self) -> tuple[T]:
+    def fetchall(self) -> tuple[RowMapping]:
         """A synonym for the :meth:`AdaptedMappingResult.all` method."""
         return self.scalars_adapter.validate_python(self._allrows())
 
-    def fetchone(self) -> T | None:
+    def fetchone(self) -> RowMapping | None:
         """Fetch one object.
 
         Equivalent to :meth:`AdaptedResult.fetchone` except that
@@ -426,7 +431,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
         else:
             return self.scalar_adapter.validate_python(row)
 
-    def fetchmany(self, size: Optional[int] = None) -> tuple[T]:
+    def fetchmany(self, size: Optional[int] = None) -> tuple[RowMapping]:
         """Fetch many rows.
 
         Equivalent to :meth:`AdaptedResult.fetchmany` except that
@@ -436,7 +441,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
         """
         return self.scalars_adapter.validate_python(self._manyrow_getter(size))
 
-    def all(self) -> tuple[T]:
+    def all(self) -> tuple[RowMapping]:
         """Return all rows in a list.
 
         Equivalent to :meth:`AdaptedResult.all` except that
@@ -446,18 +451,18 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
         """
         return self.scalars_adapter.validate_python(self._allrows())
 
-    def __iter__(self) -> Iterator[T]:
+    def __iter__(self) -> Iterator[RowMapping]:
         for row in self._iter_impl():
             yield self.scalar_adapter.validate_python(row)
 
-    def __next__(self) -> T:
+    def __next__(self) -> RowMapping:
         row = self._next_impl()
         if row is _NO_ROW:
             raise StopIteration()
         else:
             return self.scalar_adapter.validate_python(row)
 
-    def first(self) -> T | None:
+    def first(self) -> RowMapping | None:
         """Fetch the first object or ``None`` if no object is present.
 
         Equivalent to :meth:`AdaptedResult.first` except that
@@ -477,7 +482,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
             else None
         )
 
-    def one_or_none(self) -> T | None:
+    def one_or_none(self) -> RowMapping | None:
         """Return at most one object or raise an exception.
 
         Equivalent to :meth:`AdaptedResult.one_or_none` except that
@@ -497,7 +502,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
             else None
         )
 
-    def one(self) -> T:
+    def one(self) -> RowMapping:
         """Return exactly one object or raise an exception.
 
         Equivalent to :meth:`AdaptedResult.one` except that
@@ -514,17 +519,17 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[T]):
         )
 
 
-class AdaptedFrozenResult(FrozenResult[tuple[T]]):
+class AdaptedFrozenResult(FrozenResult[_TP]):
     data: Sequence[Any]
 
-    scalar_adapter: TypeAdapter[T]
-    scalars_adapter: TypeAdapter[tuple[T]]
+    scalar_adapter: TypeAdapter
+    scalars_adapter: TypeAdapter
 
     def __init__(
         self,
-        result: AdaptedResult[tuple[T]],
-        scalar_adapter: TypeAdapter[T],
-        scalars_adapter: TypeAdapter[tuple[T]],
+        result: AdaptedResult[_TP],
+        scalar_adapter: TypeAdapter,
+        scalars_adapter: TypeAdapter,
     ):
         self.metadata = result._metadata._for_freeze()
         self._source_supports_scalars = result._source_supports_scalars
@@ -545,9 +550,7 @@ class AdaptedFrozenResult(FrozenResult[tuple[T]]):
         else:
             return [list(row) for row in self.data]
 
-    def with_new_rows(
-        self, tuple_data: Sequence[Row[tuple[T]]]
-    ) -> AdaptedFrozenResult[tuple[T]]:
+    def with_new_rows(self, tuple_data: Sequence[Row[_TP]]) -> AdaptedFrozenResult[_TP]:
         afr = AdaptedFrozenResult.__new__(AdaptedFrozenResult)
         afr.metadata = self.metadata
         afr._attributes = self._attributes
@@ -562,7 +565,7 @@ class AdaptedFrozenResult(FrozenResult[tuple[T]]):
             afr.data = tuple_data
         return afr
 
-    def __call__(self) -> Result[tuple[T]]:
+    def __call__(self) -> Result[_TP]:
         result = IteratorResult(
             self.metadata,
             iter(self.data),
