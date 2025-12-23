@@ -42,7 +42,7 @@ class ProtocolMetaclass(ModelMetaclass):
 
     def __getattr__(self, name: str) -> Any:
         try:
-            return super().__getattr__(name)
+            return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
         except AttributeError as e:
             provider = object.__getattribute__(self, "__provider__")
             if name == "__clause_element__":
@@ -50,11 +50,6 @@ class ProtocolMetaclass(ModelMetaclass):
             if hasattr(provider, name):
                 return getattr(provider, name)
             raise e
-
-    @property
-    def __sqlalchemy_inspection__(self):
-        # Redirect inspection to the ORM class's mapper
-        return inspect(self.__provider__)
 
 
 class BaseProtocol(BaseModel, ABC, metaclass=ProtocolMetaclass):
@@ -71,7 +66,7 @@ class BaseProtocol(BaseModel, ABC, metaclass=ProtocolMetaclass):
     def __getattr__(self, name: str) -> Any:
         # only called when attribute not found in normal places
         try:
-            return super().__getattr__(name)
+            return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
         except AttributeError as e:
             if hasattr(self.__provided__, name):
                 return getattr(self.__provided__, name)
@@ -90,34 +85,6 @@ class BaseProtocol(BaseModel, ABC, metaclass=ProtocolMetaclass):
         for field_name, value in self:
             if isinstance(value, Association):
                 value.prepare(self, field_name)
-
-    # @property
-    # def metadata(self) -> Optional[Any]:
-    #     return self.__provided__.metadata if self.__provided__ else None
-
-    # @property
-    # def __mapper__(self) -> Optional[Any]:
-    #     return self.__provided__.__mapper__ if self.__provided__ else None
-
-    # @property
-    # def __table__(self) -> Optional[Any]:
-    #     return self.__provided__.__table__ if self.__provided__ else None
-
-    # @property
-    # def __tablename__(self) -> Optional[Any]:
-    #     return self.__provided__.__tablename__ if self.__provided__ else None
-
-    # @property
-    # def __sa_registry__(self) -> Optional[Any]:
-    #     return self.__provided__.__sa_registry__ if self.__provided__ else None
-
-    # @property
-    # def _sa_class_manager(self) -> Optional[Any]:
-    #     return self.__provided__._sa_class_manager if self.__provided__ else None
-
-    # @property
-    # def _sa_instance_state(self) -> Optional[Any]:
-    #     return self.__provided__._sa_instance_state if self.__provided__ else None
 
     @model_validator(mode="wrap")
     @classmethod
