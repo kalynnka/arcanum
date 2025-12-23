@@ -18,13 +18,20 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, test_session: Session):
 
     assert isinstance(proto.bar.value, BarProtocol)
     assert isinstance(proto.bar.value.foo.value, FooProtocol)
+    assert proto.bar.value.foo.value is proto
 
     new_name = "Renamed Foo"
     proto.name = new_name
     assert loaded.name == new_name
     assert proto.name == new_name
 
-    from sqlalchemy.sql import select
+    # stmt = select(FooProtocol)
 
-    stmt = select(FooModel.id).where(FooModel.id == foo_id)
+    from arcanum.database import Session as ArcanumSession
+    from arcanum.sql import select
+
+    arcanum_session = ArcanumSession(test_session.get_bind())
+    stmt = select(FooProtocol)
+    result = arcanum_session.execute(stmt)
+    proto = result.scalars().one()
     pass

@@ -9,7 +9,7 @@ from tests.models import Foo as FooModel
 
 
 class Foo(BaseProtocol):  # noqa: N801 - requested lowercase
-    __provider__ = FooModel
+    __provider__: type[FooModel] = FooModel
     __provided__: FooModel
 
     id: int | None = None
@@ -18,7 +18,7 @@ class Foo(BaseProtocol):  # noqa: N801 - requested lowercase
 
 
 class Bar(BaseProtocol):  # noqa: N801 - requested lowercase
-    __provider__ = BarModel
+    __provider__: type[BarModel] = BarModel
     __provided__: BarModel
 
     id: int | None = None

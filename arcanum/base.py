@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 from abc import ABC
 from contextvars import ContextVar
-from typing import Any, ClassVar, Optional, Self, TypeVar
+from typing import Any, Self, TypeVar, dataclass_transform
 
 from pydantic import (
     BaseModel,
@@ -11,6 +11,7 @@ from pydantic import (
     ModelWrapValidatorHandler,
     model_validator,
 )
+from pydantic._internal._model_construction import ModelMetaclass
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import LoaderCallableStatus
 
@@ -35,8 +36,28 @@ def validation_context():
         validated.reset(token)
 
 
-class BaseProtocol(BaseModel, ABC):
-    __provider__: ClassVar[type[Any]]
+@dataclass_transform(kw_only_default=True)
+class ProtocolMetaclass(ModelMetaclass):
+    __provider__: type[Any]
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return super().__getattr__(name)
+        except AttributeError as e:
+            provider = object.__getattribute__(self, "__provider__")
+            if name == "__clause_element__":
+                breakpoint()
+            if hasattr(provider, name):
+                return getattr(provider, name)
+            raise e
+
+    @property
+    def __sqlalchemy_inspection__(self):
+        # Redirect inspection to the ORM class's mapper
+        return inspect(self.__provider__)
+
+
+class BaseProtocol(BaseModel, ABC, metaclass=ProtocolMetaclass):
     __provided__: Any | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -47,6 +68,15 @@ class BaseProtocol(BaseModel, ABC):
             value.prepare(self, name)
         return value  # type: ignore
 
+    def __getattr__(self, name: str) -> Any:
+        # only called when attribute not found in normal places
+        try:
+            return super().__getattr__(name)
+        except AttributeError as e:
+            if hasattr(self.__provided__, name):
+                return getattr(self.__provided__, name)
+            raise e
+
     def __setattr__(self, name: str, value: Any):
         super().__setattr__(name, value)
         if self.__provided__ and name in type(self).model_fields:
@@ -54,40 +84,40 @@ class BaseProtocol(BaseModel, ABC):
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        self.__provided__ = self.__provided__ or self.__provider__(
-            **self.model_dump(exclude={"foo", "bar"})
-        )
+        self.__provided__ = object.__getattribute__(
+            self, "__provided__"
+        ) or self.__provider__(**self.model_dump(exclude={"foo", "bar"}))
         for field_name, value in self:
             if isinstance(value, Association):
                 value.prepare(self, field_name)
 
-    @property
-    def metadata(self) -> Optional[Any]:
-        return self.__provided__.metadata if self.__provided__ else None
+    # @property
+    # def metadata(self) -> Optional[Any]:
+    #     return self.__provided__.metadata if self.__provided__ else None
 
-    @property
-    def __mapper__(self) -> Optional[Any]:
-        return self.__provided__.__mapper__ if self.__provided__ else None
+    # @property
+    # def __mapper__(self) -> Optional[Any]:
+    #     return self.__provided__.__mapper__ if self.__provided__ else None
 
-    @property
-    def __table__(self) -> Optional[Any]:
-        return self.__provided__.__table__ if self.__provided__ else None
+    # @property
+    # def __table__(self) -> Optional[Any]:
+    #     return self.__provided__.__table__ if self.__provided__ else None
 
-    @property
-    def __tablename__(self) -> Optional[Any]:
-        return self.__provided__.__tablename__ if self.__provided__ else None
+    # @property
+    # def __tablename__(self) -> Optional[Any]:
+    #     return self.__provided__.__tablename__ if self.__provided__ else None
 
-    @property
-    def __sa_registry__(self) -> Optional[Any]:
-        return self.__provided__.__sa_registry__ if self.__provided__ else None
+    # @property
+    # def __sa_registry__(self) -> Optional[Any]:
+    #     return self.__provided__.__sa_registry__ if self.__provided__ else None
 
-    @property
-    def _sa_class_manager(self) -> Optional[Any]:
-        return self.__provided__._sa_class_manager if self.__provided__ else None
+    # @property
+    # def _sa_class_manager(self) -> Optional[Any]:
+    #     return self.__provided__._sa_class_manager if self.__provided__ else None
 
-    @property
-    def _sa_instance_state(self) -> Optional[Any]:
-        return self.__provided__._sa_instance_state if self.__provided__ else None
+    # @property
+    # def _sa_instance_state(self) -> Optional[Any]:
+    #     return self.__provided__._sa_instance_state if self.__provided__ else None
 
     @model_validator(mode="wrap")
     @classmethod
