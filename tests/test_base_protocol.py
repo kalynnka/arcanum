@@ -36,8 +36,7 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, test_session: Session):
     result = test_session.execute(stmt)
     proto = result.scalars()
 
-    arcanum_session = ArcanumSession(test_session.get_bind())
-    stmt = select(FooProtocol, FooModel.name)
-    result = arcanum_session.execute(stmt)
-    proto = result.fetchone()
-    pass
+    with ArcanumSession(test_session.get_bind()) as session:
+        stmt = select(FooProtocol, FooModel.name)
+        result = session.execute(stmt)
+        proto = result.fetchone()

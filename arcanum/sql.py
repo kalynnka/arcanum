@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import (
     Any,
     TypeVar,
@@ -36,6 +37,12 @@ _T9 = TypeVar("_T9", bound=Any)
 
 
 S = TypeVar("S", bound=Insert | Select | Update | Delete)
+
+
+@lru_cache(maxsize=None)
+def get_cached_adapter(tp: type) -> TypeAdapter[Any]:
+    """Cached TypeAdapter factory to avoid recreating adapters for the same type."""
+    return TypeAdapter(tp)
 
 
 class AdaptedSelect(Select[_TP]):
@@ -77,19 +84,85 @@ def select(
 def select(
     entity0: _TCCA[_T0], entity1: _TCCA[_T1], entity2: _TCCA[_T2]
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2]]: ...
-def select(  # type: ignore
+@overload
+def select(
+    entity0: _TCCA[_T0],
+    entity1: _TCCA[_T1],
+    entity2: _TCCA[_T2],
+    entity3: _TCCA[_T3],
+) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3]]: ...
+@overload
+def select(
+    entity0: _TCCA[_T0],
+    entity1: _TCCA[_T1],
+    entity2: _TCCA[_T2],
+    entity3: _TCCA[_T3],
+    entity4: _TCCA[_T4],
+) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4]]: ...
+@overload
+def select(
+    entity0: _TCCA[_T0],
+    entity1: _TCCA[_T1],
+    entity2: _TCCA[_T2],
+    entity3: _TCCA[_T3],
+    entity4: _TCCA[_T4],
+    entity5: _TCCA[_T5],
+) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5]]: ...
+@overload
+def select(
+    entity0: _TCCA[_T0],
+    entity1: _TCCA[_T1],
+    entity2: _TCCA[_T2],
+    entity3: _TCCA[_T3],
+    entity4: _TCCA[_T4],
+    entity5: _TCCA[_T5],
+    entity6: _TCCA[_T6],
+) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6]]: ...
+@overload
+def select(
+    entity0: _TCCA[_T0],
+    entity1: _TCCA[_T1],
+    entity2: _TCCA[_T2],
+    entity3: _TCCA[_T3],
+    entity4: _TCCA[_T4],
+    entity5: _TCCA[_T5],
+    entity6: _TCCA[_T6],
+    entity7: _TCCA[_T7],
+) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]]: ...
+@overload
+def select(
+    entity0: _TCCA[_T0],
+    entity1: _TCCA[_T1],
+    entity2: _TCCA[_T2],
+    entity3: _TCCA[_T3],
+    entity4: _TCCA[_T4],
+    entity5: _TCCA[_T5],
+    entity6: _TCCA[_T6],
+    entity7: _TCCA[_T7],
+    entity8: _TCCA[_T8],
+) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]]: ...
+@overload
+def select(
+    entity0: _TCCA[_T0],
+    entity1: _TCCA[_T1],
+    entity2: _TCCA[_T2],
+    entity3: _TCCA[_T3],
+    entity4: _TCCA[_T4],
+    entity5: _TCCA[_T5],
+    entity6: _TCCA[_T6],
+    entity7: _TCCA[_T7],
+    entity8: _TCCA[_T8],
+    entity9: _TCCA[_T9],
+) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]]: ...
+def select(  # pyright: ignore[reportInconsistentOverload]
     *entities: type[BaseProtocol | _InspectableTypeProtocol],
 ) -> AdaptedSelect[Any]:
-    unwrapped_entities = []
-    python_types = []
-    for entity in entities:
-        proto_type, provider_type = resolve_entities(entity)
-        unwrapped_entities.append(provider_type)
-        python_types.append(proto_type)
-    adapter = TypeAdapter(tuple[*python_types])
-    scalar_adapter = TypeAdapter(python_types[0])
+    python_types, unwrapped_entities = zip(
+        *(resolve_entities(entity) for entity in entities)
+    )
+
     return AdaptedSelect(
         *unwrapped_entities,
-        adapter=adapter,
-        scalar_adapter=scalar_adapter,
+        adapter=get_cached_adapter(tuple[*python_types]),
+        scalar_adapter=get_cached_adapter(python_types[0]),
     )
