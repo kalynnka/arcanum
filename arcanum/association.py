@@ -31,11 +31,11 @@ from sqlalchemy.orm.collections import InstrumentedList
 from sqlalchemy.util import greenlet_spawn
 
 if TYPE_CHECKING:
-    from arcanum.base import BaseProtocol
+    from arcanum.base import BaseTransmuter
 
 T = TypeVar("T")
-T_Protocol = TypeVar("T_Protocol", bound="BaseProtocol")
-OPT_Protocol = TypeVar("OPT_Protocol", bound="BaseProtocol | None")
+T_Protocol = TypeVar("T_Protocol", bound="BaseTransmuter")
+OPT_Protocol = TypeVar("OPT_Protocol", bound="BaseTransmuter | None")
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -61,7 +61,7 @@ class Association(Generic[T], ABC):
 
     __args__: tuple[T, ...]
     __generic_protocol__: Type[T]
-    __instance__: BaseProtocol
+    __instance__: BaseTransmuter
     __loaded__: bool
     __payloads__: T
 
@@ -172,7 +172,7 @@ class Association(Generic[T], ABC):
         self.__payloads__ = payloads
         self.__loaded__ = False
 
-    def prepare(self, instance: BaseProtocol, field_name: str):
+    def prepare(self, instance: BaseTransmuter, field_name: str):
         if self.__instance__ is not None:
             return
         self.__instance__ = instance
@@ -234,7 +234,7 @@ class Relation(Association[OPT_Protocol]):
     def __provided__(self, object: Any):
         setattr(self.__instance__.__provided__, self.used_name, object)
 
-    def prepare(self, instance: BaseProtocol, field_name: str):
+    def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
         if not self.__loaded__ and self.__payloads__ is not None:
             self.__provided__ = self.__payloads__.__provided__
@@ -348,7 +348,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
             return self.__list_validator__.validate_python(value)
         return self.__validator__.validate_python(value)
 
-    def prepare(self, instance: BaseProtocol, field_name: str):
+    def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
         if not self.__loaded__ and self.__payloads__:
             self.extend(self.__payloads__)

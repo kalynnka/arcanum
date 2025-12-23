@@ -17,7 +17,7 @@ from sqlalchemy.orm import LoaderCallableStatus
 
 from arcanum.association import Association
 
-T = TypeVar("T", bound="BaseProtocol")
+T = TypeVar("T", bound="BaseTransmuter")
 
 
 class LoadedData: ...
@@ -37,7 +37,7 @@ def validation_context():
 
 
 @dataclass_transform(kw_only_default=True)
-class ProtocolMetaclass(ModelMetaclass):
+class TransmuterMetaclass(ModelMetaclass):
     __provider__: type[Any]
 
     def __getattr__(self, name: str) -> Any:
@@ -52,7 +52,7 @@ class ProtocolMetaclass(ModelMetaclass):
             raise e
 
 
-class BaseProtocol(BaseModel, ABC, metaclass=ProtocolMetaclass):
+class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     __provided__: Any | None = None
 
     model_config = ConfigDict(from_attributes=True)

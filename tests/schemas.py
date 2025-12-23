@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Optional
 
 from arcanum.association import Relation
-from arcanum.base import BaseProtocol
+from arcanum.base import BaseTransmuter
 from tests.models import Bar as BarModel
 from tests.models import Foo as FooModel
 
 
-class Foo(BaseProtocol):  # noqa: N801 - requested lowercase
+class Foo(BaseTransmuter):  # noqa: N801 - requested lowercase
     __provider__: type[FooModel] = FooModel
     __provided__: FooModel
 
@@ -17,7 +17,7 @@ class Foo(BaseProtocol):  # noqa: N801 - requested lowercase
     bar: Relation[Optional[Bar]]
 
 
-class Bar(BaseProtocol):  # noqa: N801 - requested lowercase
+class Bar(BaseTransmuter):  # noqa: N801 - requested lowercase
     __provider__: type[BarModel] = BarModel
     __provided__: BarModel
 

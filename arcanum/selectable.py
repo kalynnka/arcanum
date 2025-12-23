@@ -20,7 +20,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import Select
 from sqlalchemy.sql._typing import _TypedColumnClauseArgument as _TCCA
 
-from arcanum.base import BaseProtocol
+from arcanum.base import BaseTransmuter
 
 _TP = TypeVar("_TP", bound=tuple[Any, ...])
 
@@ -62,9 +62,9 @@ class AdaptedSelect(Select[_TP]):
 
 
 def resolve_entities(
-    entity: type[BaseProtocol | _InspectableTypeProtocol],
+    entity: type[BaseTransmuter | _InspectableTypeProtocol],
 ) -> tuple[type[Any], type[Any]]:
-    if isinstance(entity, type) and issubclass(entity, BaseProtocol):
+    if isinstance(entity, type) and issubclass(entity, BaseTransmuter):
         return entity, entity.__provider__
     if isinstance(entity, (InstrumentedAttribute, Column)):
         inspected = inspect(entity, raiseerr=True)
@@ -155,7 +155,7 @@ def select(
     entity9: _TCCA[_T9],
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]]: ...
 def select(  # pyright: ignore[reportInconsistentOverload]
-    *entities: type[BaseProtocol | _InspectableTypeProtocol],
+    *entities: type[BaseTransmuter | _InspectableTypeProtocol],
 ) -> AdaptedSelect[Any]:
     python_types, unwrapped_entities = zip(
         *(resolve_entities(entity) for entity in entities)
