@@ -57,16 +57,16 @@ class AdaptedCommon(FilterResult[_R]):
 
 
 class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
-    scalar_adapter: TypeAdapter
-    scalars_adapter: TypeAdapter
+    scalar_adapter: TypeAdapter[_TP]
+    scalars_adapter: TypeAdapter[tuple[_TP]]
 
     _real_result: Result[_TP]
 
     def __init__(
         self,
         real_result: Result[_TP],
-        scalar_adapter: TypeAdapter,
-        scalars_adapter: TypeAdapter,
+        scalar_adapter: TypeAdapter[_TP],
+        scalars_adapter: TypeAdapter[tuple[_TP]],
     ):
         self._real_result = real_result
 
@@ -114,14 +114,14 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         """
         return self._column_slices(col_expressions)
 
-    def __iter__(self) -> Iterator[Row[_TP]]:
+    def __iter__(self) -> Iterator[tuple[_TP]]:
         for row in self._iter_impl():
             yield self.scalar_adapter.validate_python(row)
 
-    def __next__(self) -> Row[_TP]:
+    def __next__(self) -> tuple[_TP]:
         return self.scalar_adapter.validate_python(self._next_impl())
 
-    def partitions(self, size: int | None = None) -> Iterator[Row[_TP]]:
+    def partitions(self, size: int | None = None) -> Iterator[tuple[_TP]]:
         while True:
             partition = self._manyrow_getter(size)
             if partition:
@@ -129,23 +129,23 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             else:
                 break
 
-    def fetchall(self) -> tuple[Row[_TP]]:
+    def fetchall(self) -> tuple[_TP]:
         return self.scalars_adapter.validate_python(self._allrows())
 
-    def fetchone(self) -> Optional[Row[_TP]]:
+    def fetchone(self) -> Optional[tuple[_TP]]:
         row = self._onerow_getter()
         if row is _NO_ROW:
             return None
         else:
             return self.scalar_adapter.validate_python(row)
 
-    def fetchmany(self, size: int | None = None) -> tuple[Row[_TP]]:
+    def fetchmany(self, size: int | None = None) -> tuple[_TP]:
         return self.scalars_adapter.validate_python(self._manyrow_getter(size))
 
-    def all(self) -> tuple[Row[_TP]]:
+    def all(self) -> tuple[_TP]:
         return self.scalars_adapter.validate_python(self._allrows())
 
-    def first(self) -> Optional[Row[_TP]]:
+    def first(self) -> Optional[tuple[_TP]]:
         return (
             self.scalar_adapter.validate_python(row)
             if (
@@ -158,7 +158,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             else None
         )
 
-    def one(self) -> Row[_TP]:
+    def one(self) -> tuple[_TP]:
         return self.scalar_adapter.validate_python(
             self._only_one_row(
                 raise_for_second_row=True,
@@ -167,7 +167,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             )
         )
 
-    def one_or_none(self) -> Optional[Row[_TP]]:
+    def one_or_none(self) -> Optional[tuple[_TP]]:
         return (
             self.scalar_adapter.validate_python(row)
             if (
@@ -180,7 +180,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             else None
         )
 
-    def scalar(self) -> Optional[Row[_TP]]:
+    def scalar(self) -> Optional[tuple[_TP]]:
         return self.scalar_adapter.validate_python(
             self._only_one_row(
                 raise_for_second_row=False,

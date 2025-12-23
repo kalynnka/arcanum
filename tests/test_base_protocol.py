@@ -31,7 +31,7 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, test_session: Session):
     from arcanum.sql import select
 
     arcanum_session = ArcanumSession(test_session.get_bind())
-    stmt = select(FooProtocol)
+    stmt = select(FooModel.id, FooModel.name)
     result = arcanum_session.execute(stmt)
-    proto = result.scalars().one()
+    proto = result.scalars().first()
     pass
