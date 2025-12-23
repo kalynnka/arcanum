@@ -8,6 +8,6 @@ class Session(SqlalchemySession):
     def execute(self, statement: AdaptedSelect[_TP]) -> AdaptedResult[_TP]:
         return AdaptedResult(
             real_result=super().execute(statement),
+            adapter=statement.adapter,
             scalar_adapter=statement.scalar_adapter,
-            scalars_adapter=statement.scalars_adapter,
         )

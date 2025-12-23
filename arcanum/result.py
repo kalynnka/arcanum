@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import operator
+from collections.abc import Callable
 from typing import (
     Any,
     Iterator,
@@ -18,7 +19,6 @@ from sqlalchemy import (
     IteratorResult,
     Result,
     Row,
-    RowMapping,
     ScalarResult,
 )
 from sqlalchemy.engine.result import (
@@ -57,16 +57,17 @@ class AdaptedCommon(FilterResult[_R]):
 
 
 class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
-    scalar_adapter: TypeAdapter[_TP]
-    scalars_adapter: TypeAdapter[tuple[_TP]]
+    adapter: TypeAdapter
+    scalar_adapter: TypeAdapter
 
     _real_result: Result[_TP]
+    _row_logging_fn: Optional[Callable[[Row[Any]], Row[Any]]] = None
 
     def __init__(
         self,
         real_result: Result[_TP],
-        scalar_adapter: TypeAdapter[_TP],
-        scalars_adapter: TypeAdapter[tuple[_TP]],
+        adapter: TypeAdapter,
+        scalar_adapter: TypeAdapter,
     ):
         self._real_result = real_result
 
@@ -75,8 +76,8 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         self._source_supports_scalars = real_result._source_supports_scalars
         self._post_creational_filter = None
 
+        self.adapter = adapter
         self.scalar_adapter = scalar_adapter
-        self.scalars_adapter = scalars_adapter
 
         # BaseCursorResult pre-generates the "_row_getter".  Use that
         # if available rather than building a second one
@@ -114,40 +115,42 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         """
         return self._column_slices(col_expressions)
 
-    def __iter__(self) -> Iterator[tuple[_TP]]:
+    def __iter__(self) -> Iterator[Row[_TP]]:
         for row in self._iter_impl():
-            yield self.scalar_adapter.validate_python(row)
+            yield self.adapter.validate_python(row)
 
-    def __next__(self) -> tuple[_TP]:
-        return self.scalar_adapter.validate_python(self._next_impl())
+    def __next__(self) -> Row[_TP]:
+        return self.adapter.validate_python(self._next_impl())
 
-    def partitions(self, size: int | None = None) -> Iterator[tuple[_TP]]:
+    def partitions(self, size: int | None = None) -> Iterator[tuple[Row[_TP]]]:
         while True:
             partition = self._manyrow_getter(size)
             if partition:
-                yield self.scalars_adapter.validate_python(partition)
+                yield tuple(self.adapter.validate_python(row) for row in partition)
             else:
                 break
 
-    def fetchall(self) -> tuple[_TP]:
-        return self.scalars_adapter.validate_python(self._allrows())
+    def fetchall(self) -> tuple[Row[_TP]]:
+        return tuple(self.adapter.validate_python(row) for row in self._allrows())
 
-    def fetchone(self) -> Optional[tuple[_TP]]:
-        row = self._onerow_getter()
+    def fetchone(self) -> Optional[Row[_TP]]:
+        row = self._onerow_getter(self)
         if row is _NO_ROW:
             return None
         else:
-            return self.scalar_adapter.validate_python(row)
+            return self.adapter.validate_python(row)
 
-    def fetchmany(self, size: int | None = None) -> tuple[_TP]:
-        return self.scalars_adapter.validate_python(self._manyrow_getter(size))
+    def fetchmany(self, size: int | None = None) -> tuple[Row[_TP]]:
+        return tuple(
+            self.adapter.validate_python(row) for row in self._manyrow_getter(size)
+        )
 
-    def all(self) -> tuple[_TP]:
-        return self.scalars_adapter.validate_python(self._allrows())
+    def all(self) -> tuple[Row[_TP]]:
+        return tuple(self.adapter.validate_python(row) for row in self._allrows())
 
-    def first(self) -> Optional[tuple[_TP]]:
+    def first(self) -> Optional[Row[_TP]]:
         return (
-            self.scalar_adapter.validate_python(row)
+            self.adapter.validate_python(row)
             if (
                 row := self._only_one_row(
                     raise_for_second_row=False,
@@ -158,8 +161,8 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             else None
         )
 
-    def one(self) -> tuple[_TP]:
-        return self.scalar_adapter.validate_python(
+    def one(self) -> Row[_TP]:
+        return self.adapter.validate_python(
             self._only_one_row(
                 raise_for_second_row=True,
                 raise_for_none=True,
@@ -167,9 +170,9 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             )
         )
 
-    def one_or_none(self) -> Optional[tuple[_TP]]:
+    def one_or_none(self) -> Optional[Row[_TP]]:
         return (
-            self.scalar_adapter.validate_python(row)
+            self.adapter.validate_python(row)
             if (
                 row := self._only_one_row(
                     raise_for_second_row=True,
@@ -180,7 +183,12 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             else None
         )
 
-    def scalar(self) -> Optional[tuple[_TP]]:
+    @overload
+    def scalar(self: AdaptedResult[tuple[_T]]) -> Optional[_T]: ...
+
+    @overload
+    def scalar(self) -> Any: ...
+    def scalar(self) -> Any:
         return self.scalar_adapter.validate_python(
             self._only_one_row(
                 raise_for_second_row=False,
@@ -198,8 +206,8 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         return self.scalar_adapter.validate_python(
             self._only_one_row(
                 raise_for_second_row=True,
-                raise_for_none=False,
-                scalar=False,
+                raise_for_none=True,
+                scalar=True,
             )
         )
 
@@ -234,41 +242,35 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
     def scalars(self, index: _KeyIndexType = 0) -> AdaptedScalarResult[Any]: ...
     def scalars(self, index: _KeyIndexType = 0) -> AdaptedScalarResult[Any]:
         return AdaptedScalarResult(
-            self,  # type: ignore
+            self,
             index=index,
             scalar_adapter=self.scalar_adapter,
-            scalars_adapter=self.scalars_adapter,
         )
 
     def freeze(self) -> AdaptedFrozenResult[_TP]:
         return AdaptedFrozenResult(
             self,
+            adapter=self.adapter,
             scalar_adapter=self.scalar_adapter,
-            scalars_adapter=self.scalars_adapter,
         )
 
-    def mappings(self) -> AdaptedMappingResult:
-        return AdaptedMappingResult(
-            result=self._real_result,
-            scalar_adapter=self.scalar_adapter,
-            scalars_adapter=self.scalars_adapter,
-        )
+    def mappings(self):
+        raise NotImplementedError("AdaptedMappingResult is not implemented yet.")
 
 
 class AdaptedScalarResult(ScalarResult[_R]):
     scalar_adapter: TypeAdapter
-    scalars_adapter: TypeAdapter
 
     __slots__ = ()
 
     _generate_rows = False
+    _real_result: AdaptedResult[Any]
 
     def __init__(
         self,
-        real_result: Result[Any],
+        real_result: AdaptedResult[Any],
         index: _KeyIndexType,
         scalar_adapter: TypeAdapter,
-        scalars_adapter: TypeAdapter,
     ):
         self._unique_filter_state = real_result._unique_filter_state
         self._real_result = real_result
@@ -281,7 +283,6 @@ class AdaptedScalarResult(ScalarResult[_R]):
             self._post_creational_filter = operator.itemgetter(0)
 
         self.scalar_adapter = scalar_adapter
-        self.scalars_adapter = scalars_adapter
 
     def unique(
         self,
@@ -301,18 +302,27 @@ class AdaptedScalarResult(ScalarResult[_R]):
         while True:
             partition = self._manyrow_getter(size)
             if partition:
-                yield self.scalars_adapter.validate_python(partition)
+                yield tuple(
+                    self.scalar_adapter.validate_python(scalar) for scalar in partition
+                )
             else:
                 break
 
     def fetchall(self) -> tuple[_R]:
-        return self.scalars_adapter.validate_python(self._allrows())
+        return tuple(
+            self.scalar_adapter.validate_python(scalar) for scalar in self._allrows()
+        )
 
     def fetchmany(self, size: int | None = None) -> tuple[_R]:
-        return self.scalars_adapter.validate_python(self._manyrow_getter(size))
+        return tuple(
+            self.scalar_adapter.validate_python(scalar)
+            for scalar in self._manyrow_getter(size)
+        )
 
     def all(self) -> tuple[_R]:
-        return self.scalars_adapter.validate_python(self._allrows())
+        return tuple(
+            self.scalar_adapter.validate_python(scalar) for scalar in self._allrows()
+        )
 
     def first(self) -> _R | None:
         return (
@@ -350,195 +360,26 @@ class AdaptedScalarResult(ScalarResult[_R]):
         )
 
 
-class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
-    """A wrapper for a :class:`AdaptedResult` that returns dictionary
-    values rather than :class:`_engine.Row` values.
-
-    The :class:`AdaptedMappingResult` object is acquired by calling the
-    :meth:`AdaptedResult.mappings` method.
-
-    """
-
-    scalar_adapter: TypeAdapter
-    scalars_adapter: TypeAdapter
-
-    __slots__ = ()
-
-    _generate_rows = True
-
-    _post_creational_filter = operator.attrgetter("_mapping")
-
-    def __init__(
-        self,
-        result: Result[Any],
-        scalar_adapter: TypeAdapter,
-        scalars_adapter: TypeAdapter,
-    ):
-        self._real_result = result
-        self._unique_filter_state = result._unique_filter_state
-        self._metadata = result._metadata
-        if result._source_supports_scalars:
-            self._metadata = self._metadata._reduce([0])
-
-        self.scalar_adapter = scalar_adapter
-        self.scalars_adapter = scalars_adapter
-
-    def unique(
-        self,
-        strategy: Optional[_UniqueFilterType] = None,
-    ) -> Self:
-        """Apply unique filtering to the objects returned by this
-        :class:`AdaptedMappingResult`.
-
-        """
-        self._unique_filter_state = (set(), strategy)
-        return self
-
-    def columns(self, *col_expressions: _KeyIndexType) -> Self:
-        r"""Establish the columns that should be returned in each row."""
-        return self._column_slices(col_expressions)
-
-    def partitions(self, size: Optional[int] = None) -> Iterator[RowMapping]:
-        """Iterate through sub-lists of elements of the size given.
-
-        Equivalent to :meth:`AdaptedResult.partitions` except that
-        :class:`_engine.RowMapping` values, rather than :class:`_engine.Row`
-        objects, are returned.
-
-        """
-        while True:
-            partition = self._manyrow_getter(size)
-            if partition:
-                yield self.scalars_adapter.validate_python(partition)
-            else:
-                break
-
-    def fetchall(self) -> tuple[RowMapping]:
-        """A synonym for the :meth:`AdaptedMappingResult.all` method."""
-        return self.scalars_adapter.validate_python(self._allrows())
-
-    def fetchone(self) -> RowMapping | None:
-        """Fetch one object.
-
-        Equivalent to :meth:`AdaptedResult.fetchone` except that
-        :class:`_engine.RowMapping` values, rather than :class:`_engine.Row`
-        objects, are returned.
-
-        """
-        row = self._onerow_getter()
-        if row is _NO_ROW:
-            return None
-        else:
-            return self.scalar_adapter.validate_python(row)
-
-    def fetchmany(self, size: Optional[int] = None) -> tuple[RowMapping]:
-        """Fetch many rows.
-
-        Equivalent to :meth:`AdaptedResult.fetchmany` except that
-        :class:`_engine.RowMapping` values, rather than :class:`_engine.Row`
-        objects, are returned.
-
-        """
-        return self.scalars_adapter.validate_python(self._manyrow_getter(size))
-
-    def all(self) -> tuple[RowMapping]:
-        """Return all rows in a list.
-
-        Equivalent to :meth:`AdaptedResult.all` except that
-        :class:`_engine.RowMapping` values, rather than :class:`_engine.Row`
-        objects, are returned.
-
-        """
-        return self.scalars_adapter.validate_python(self._allrows())
-
-    def __iter__(self) -> Iterator[RowMapping]:
-        for row in self._iter_impl():
-            yield self.scalar_adapter.validate_python(row)
-
-    def __next__(self) -> RowMapping:
-        row = self._next_impl()
-        if row is _NO_ROW:
-            raise StopIteration()
-        else:
-            return self.scalar_adapter.validate_python(row)
-
-    def first(self) -> RowMapping | None:
-        """Fetch the first object or ``None`` if no object is present.
-
-        Equivalent to :meth:`AdaptedResult.first` except that
-        :class:`_engine.RowMapping` values, rather than :class:`_engine.Row`
-        objects, are returned.
-
-        """
-        return (
-            self.scalar_adapter.validate_python(row)
-            if (
-                row := self._only_one_row(
-                    raise_for_second_row=False,
-                    raise_for_none=False,
-                    scalar=False,
-                )
-            )
-            else None
-        )
-
-    def one_or_none(self) -> RowMapping | None:
-        """Return at most one object or raise an exception.
-
-        Equivalent to :meth:`AdaptedResult.one_or_none` except that
-        :class:`_engine.RowMapping` values, rather than :class:`_engine.Row`
-        objects, are returned.
-
-        """
-        return (
-            self.scalar_adapter.validate_python(row)
-            if (
-                row := self._only_one_row(
-                    raise_for_second_row=True,
-                    raise_for_none=False,
-                    scalar=False,
-                )
-            )
-            else None
-        )
-
-    def one(self) -> RowMapping:
-        """Return exactly one object or raise an exception.
-
-        Equivalent to :meth:`AdaptedResult.one` except that
-        :class:`_engine.RowMapping` values, rather than :class:`_engine.Row`
-        objects, are returned.
-
-        """
-        return self.scalar_adapter.validate_python(
-            self._only_one_row(
-                raise_for_second_row=True,
-                raise_for_none=True,
-                scalar=False,
-            )
-        )
-
-
 class AdaptedFrozenResult(FrozenResult[_TP]):
     data: Sequence[Any]
 
+    adapter: TypeAdapter
     scalar_adapter: TypeAdapter
-    scalars_adapter: TypeAdapter
 
     def __init__(
         self,
         result: AdaptedResult[_TP],
+        adapter: TypeAdapter,
         scalar_adapter: TypeAdapter,
-        scalars_adapter: TypeAdapter,
     ):
         self.metadata = result._metadata._for_freeze()
         self._source_supports_scalars = result._source_supports_scalars
         self._attributes = result._attributes
+        self.adapter = adapter
         self.scalar_adapter = scalar_adapter
-        self.scalars_adapter = scalars_adapter
 
         if self._source_supports_scalars:
-            self.data = self.scalars_adapter.validate_python(
+            self.data = self.scalar_adapter.validate_python(
                 result._real_result._raw_row_iterator()
             )
         else:
@@ -556,8 +397,8 @@ class AdaptedFrozenResult(FrozenResult[_TP]):
         afr._attributes = self._attributes
         afr._source_supports_scalars = self._source_supports_scalars
 
+        afr.adapter = self.adapter
         afr.scalar_adapter = self.scalar_adapter
-        afr.scalars_adapter = self.scalars_adapter
 
         if self._source_supports_scalars:
             afr.data = [d[0] for d in tuple_data]

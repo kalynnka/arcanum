@@ -8,10 +8,14 @@ from typing import (
 
 from pydantic import TypeAdapter
 from sqlalchemy import (
+    Column,
     Delete,
     Insert,
     Update,
+    inspect,
 )
+from sqlalchemy.inspection import _InspectableTypeProtocol
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import Select
 from sqlalchemy.sql._typing import _TypedColumnClauseArgument as _TCCA
 
@@ -35,19 +39,32 @@ S = TypeVar("S", bound=Insert | Select | Update | Delete)
 
 
 class AdaptedSelect(Select[_TP]):
-    scalar_adapter: TypeAdapter[_TP]
-    scalars_adapter: TypeAdapter[tuple[_TP]]
+    adapter: TypeAdapter
+    scalars_adapter: TypeAdapter
 
     def __init__(
         self,
         *entities: type[Any],
-        scalar_adapter: TypeAdapter[_TP],
-        scalars_adapter: TypeAdapter[tuple[_TP]],
+        adapter: TypeAdapter,
+        scalar_adapter: TypeAdapter,
         **dialect_kw: Any,
     ) -> None:
         super().__init__(*entities, **dialect_kw)
+        self.adapter = adapter
         self.scalar_adapter = scalar_adapter
-        self.scalars_adapter = scalars_adapter
+
+
+def resolve_entities(
+    entity: type[BaseProtocol | _InspectableTypeProtocol],
+) -> tuple[type[Any], type[Any]]:
+    if isinstance(entity, type) and issubclass(entity, BaseProtocol):
+        return entity, entity.__provider__
+    if isinstance(entity, (InstrumentedAttribute, Column)):
+        inspected = inspect(entity, raiseerr=True)
+        return inspected.expression.type.python_type, entity
+    raise TypeError(
+        f"Cannot resolve entity: {entity!r}, Currently only BaseProtocol, InstrumentedAttribute and Table.Column are supported."
+    )
 
 
 @overload
@@ -60,19 +77,19 @@ def select(
 def select(
     entity0: _TCCA[_T0], entity1: _TCCA[_T1], entity2: _TCCA[_T2]
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2]]: ...
-def select(*entities: type[Any]) -> AdaptedSelect[Any]:  # type: ignore
-    unwrapped_entities = tuple(
-        e.__provider__ if isinstance(e, type) and issubclass(e, BaseProtocol) else e
-        for e in entities
-    )
-    if len(entities) == 1:
-        scalar_adapter = TypeAdapter(entities[0])
-        scalars_adapter = TypeAdapter(tuple[entities[0]])
-    else:
-        scalar_adapter = TypeAdapter(entities)
-        scalars_adapter = TypeAdapter(tuple[entities])
+def select(  # type: ignore
+    *entities: type[BaseProtocol | _InspectableTypeProtocol],
+) -> AdaptedSelect[Any]:
+    unwrapped_entities = []
+    python_types = []
+    for entity in entities:
+        proto_type, provider_type = resolve_entities(entity)
+        unwrapped_entities.append(provider_type)
+        python_types.append(proto_type)
+    adapter = TypeAdapter(tuple[*python_types])
+    scalar_adapter = TypeAdapter(python_types[0])
     return AdaptedSelect(
         *unwrapped_entities,
+        adapter=adapter,
         scalar_adapter=scalar_adapter,
-        scalars_adapter=scalars_adapter,
     )

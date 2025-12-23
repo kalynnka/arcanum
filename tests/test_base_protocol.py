@@ -27,11 +27,17 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, test_session: Session):
 
     # stmt = select(FooProtocol)
 
+    from sqlalchemy.sql import select as sa_select
+
     from arcanum.database import Session as ArcanumSession
     from arcanum.sql import select
 
+    stmt = sa_select(FooModel.id, FooModel.name)
+    result = test_session.execute(stmt)
+    proto = result.scalars()
+
     arcanum_session = ArcanumSession(test_session.get_bind())
-    stmt = select(FooModel.id, FooModel.name)
+    stmt = select(FooProtocol, FooModel.name)
     result = arcanum_session.execute(stmt)
-    proto = result.scalars().first()
+    proto = result.fetchone()
     pass
