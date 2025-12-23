@@ -5,7 +5,7 @@ from sqlalchemy.sql.selectable import ForUpdateArg
 
 from arcanum.base import BaseProtocol
 from arcanum.result import _TP, AdaptedResult
-from arcanum.sql import AdaptedSelect
+from arcanum.selectable import AdaptedSelect
 
 
 class Session(SqlalchemySession):
