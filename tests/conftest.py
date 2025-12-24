@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from arcanum.association import Relation
 from arcanum.base import validation_context
 from tests.models import Base
 from tests.schemas import Bar, Foo
@@ -90,7 +91,7 @@ def foo_with_bar(session: Session):
     """Persist and return a Foo that has an associated Bar (one-to-many)."""
     bar = Bar(
         data="Bar Data",
-        foo=Foo(name="Bar's Foo0"),
+        foo=Relation(Foo(name="Bar's Foo0")),
     )
     session.add(bar)
     session.flush()
@@ -104,7 +105,7 @@ def bar_only(session: Session):
     """Create a Foo + Bar but return only the Bar instance (convenience)."""
     bar = Bar(
         data="Isolated Bar",
-        foo=Foo(name="Foo For Bar Only"),
+        foo=Relation(Foo(name="Foo For Bar Only")),
     )
     session.add(bar)
     session.flush()

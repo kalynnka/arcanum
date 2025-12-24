@@ -168,10 +168,10 @@ class Association(Generic[T], ABC):
             else self.field_name
         )
 
-    def __init__(self):
+    def __init__(self, payloads: T | None = None):
         self.__instance__ = None
         self.__loaded__ = False
-        self.__payloads__ = None
+        self.__payloads__ = payloads
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
         if self.__instance__ is not None:
@@ -322,11 +322,11 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         # usually means relationship's loading is not yet completed
         return [] if value is LoaderCallableStatus.NO_VALUE else value
 
-    def __init__(self):
+    def __init__(self, payloads: Iterable[T_Protocol] | None = None):
         super().__init__()
         self.__instance__ = None
         self.__loaded__ = False
-        self.__payloads__ = []
+        self.__payloads__ = payloads or []
 
     @cached_property
     def __provided__(self) -> InstrumentedList[Any]:
