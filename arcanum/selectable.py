@@ -19,6 +19,7 @@ from sqlalchemy.inspection import _InspectableTypeProtocol
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import Select
 from sqlalchemy.sql._typing import _TypedColumnClauseArgument as _TCCA
+from sqlalchemy.sql.selectable import TypedReturnsRows
 
 from arcanum.base import BaseTransmuter
 
@@ -45,10 +46,12 @@ def get_cached_adapter(tp: type) -> TypeAdapter[Any]:
     return TypeAdapter(tp)
 
 
-class AdaptedSelect(Select[_TP]):
+class AdaptedReturnRows(TypedReturnsRows[_TP]):
     adapter: TypeAdapter
-    scalars_adapter: TypeAdapter
+    scalar_adapter: TypeAdapter
 
+
+class AdaptedSelect(Select, AdaptedReturnRows[_TP]):
     def __init__(
         self,
         *entities: type[Any],
@@ -62,7 +65,7 @@ class AdaptedSelect(Select[_TP]):
 
 
 def resolve_entities(
-    entity: type[BaseTransmuter | _InspectableTypeProtocol],
+    entity: type[Any],
 ) -> tuple[type[Any], type[Any]]:
     if isinstance(entity, type) and issubclass(entity, BaseTransmuter):
         return entity, entity.__provider__

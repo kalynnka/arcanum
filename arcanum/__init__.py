@@ -8,3 +8,7 @@ eliminating the need to manually create templates, factories, and utilities repe
 __version__ = "0.1.0"
 __author__ = "arcanum"
 __email__ = "arcanum@example.com"
+
+from arcanum.base import BaseTransmuter
+
+__all__ = ["BaseTransmuter"]
