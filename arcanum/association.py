@@ -61,9 +61,9 @@ class Association(Generic[T], ABC):
 
     __args__: tuple[T, ...]
     __generic_protocol__: Type[T]
-    __instance__: BaseTransmuter
+    __instance__: BaseTransmuter | None
     __loaded__: bool
-    __payloads__: T
+    __payloads__: T | None
 
     field_name: str
 
@@ -169,9 +169,9 @@ class Association(Generic[T], ABC):
         )
 
     def __init__(self):
-        self.__instance__ = None  # type: ignore
+        self.__instance__ = None
         self.__loaded__ = False
-        self.__payloads__ = None  # type: ignore
+        self.__payloads__ = None
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
         if self.__instance__ is not None:
@@ -218,6 +218,10 @@ class Relation(Association[OPT_Protocol]):
 
     @property
     def __provided__(self) -> InstrumentedAttribute[Any]:
+        if not self.__instance__:
+            raise RuntimeError(
+                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
+            )
         try:
             return getattr(self.__instance__.__provided__, self.used_name)
         except MissingGreenlet as missing_greenlet_error:
@@ -233,6 +237,10 @@ class Relation(Association[OPT_Protocol]):
 
     @__provided__.setter
     def __provided__(self, object: Any):
+        if not self.__instance__:
+            raise RuntimeError(
+                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
+            )
         setattr(self.__instance__.__provided__, self.used_name, object)
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
@@ -273,7 +281,7 @@ class Relation(Association[OPT_Protocol]):
     @property
     @ensure_loaded
     def value(self) -> OPT_Protocol:
-        return self.__payloads__
+        return self.__payloads__  # type: ignore
 
     @value.setter
     @ensure_loaded
@@ -316,14 +324,19 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
 
     def __init__(self):
         super().__init__()
-        self.__instance__ = None  # type: ignore
+        self.__instance__ = None
         self.__loaded__ = False
-        self.__payloads__ = None  # type: ignore
+        self.__payloads__ = []
 
     @cached_property
     def __provided__(self) -> InstrumentedList[Any]:
         # The return type is something like a list of T_Protocol's provider instances (orm objects),
         # which is actually returned by sqlalchemy's attr descriptor.
+
+        if not self.__instance__:
+            raise RuntimeError(
+                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
+            )
         try:
             return getattr(self.__instance__.__provided__, self.used_name)
         except MissingGreenlet as missing_greenlet_error:
