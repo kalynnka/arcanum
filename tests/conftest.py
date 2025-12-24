@@ -5,7 +5,8 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from arcanum.base import validation_context
-from tests.models import metadata
+from tests.models import Bar as BarModel
+from tests.models import Base
 from tests.schemas import Bar, Foo
 
 # Database URL points to the docker-compose postgres service exposed on localhost
@@ -21,16 +22,13 @@ def engine():
     engine = create_engine(DB_URL, echo=True, future=True)
 
     with engine.begin() as conn:
-        metadata.drop_all(conn)
-        metadata.create_all(conn)
+        Base.metadata.drop_all(conn)
+        Base.metadata.create_all(conn)
         conn.commit()
 
     try:
         yield engine
-    finally:  # Always drop tables even if tests failed
-        with engine.begin() as conn:
-            metadata.drop_all(conn)
-            conn.commit()
+    finally:
         engine.dispose()
 
 

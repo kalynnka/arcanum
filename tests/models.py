@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import ForeignKey, Integer, MetaData, String
-from sqlalchemy.orm import Mapped, mapped_column, registry, relationship
-
-metadata = MetaData()
-mapper_registry = registry(metadata=metadata)
+from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
-@mapper_registry.as_declarative_base()
-class Base: ...
+class Base(DeclarativeBase): ...
 
 
 class Foo(Base):
