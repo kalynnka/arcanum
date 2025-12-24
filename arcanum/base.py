@@ -166,7 +166,9 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        self.__provided__ = self.__provider__(**self.model_dump(exclude={"foo", "bar"}))
+        self.__provided__ = self.__provider__(
+            **self.model_dump(exclude=set(type(self).model_associations.keys()))
+        )
         for name in type(self).model_associations:
             association = getattr(self, name)
             if isinstance(association, Association):

@@ -87,8 +87,11 @@ def foo_without_bar(session: Session):
 
 @pytest.fixture()
 def foo_with_bar(session: Session):
-    """Persist and return a Foo that has an associated Bar (one-to-one)."""
-    bar = Bar(data="Bar Data", foo=Foo(name="Foo With Bar"))
+    """Persist and return a Foo that has an associated Bar (one-to-many)."""
+    bar = Bar(
+        data="Bar Data",
+        foo=Foo(name="Bar's Foo0"),
+    )
     session.add(bar)
     session.flush()
     session.commit()
@@ -99,8 +102,10 @@ def foo_with_bar(session: Session):
 @pytest.fixture()
 def bar_only(session: Session):
     """Create a Foo + Bar but return only the Bar instance (convenience)."""
-    foo = Foo(name="Foo For Bar Only")
-    bar = Bar(data="Isolated Bar", foo=foo)
+    bar = Bar(
+        data="Isolated Bar",
+        foo=Foo(name="Foo For Bar Only"),
+    )
     session.add(bar)
     session.flush()
     session.commit()

@@ -21,9 +21,10 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, engine: Engine):
         assert proto.name == loaded.name
         assert proto.__provided__ is loaded
 
-        assert isinstance(proto.bar.value, BarProtocol)
-        assert isinstance(proto.bar.value.foo.value, FooProtocol)
-        assert proto.bar.value.foo.value is proto
+        assert len(proto.bars) == 1
+        assert isinstance(proto.bars[0], BarProtocol)
+        assert isinstance(proto.bars[0].foo.value, FooProtocol)
+        assert proto.bars[0].foo.value is proto
 
         new_name = "Renamed Foo"
         proto.name = new_name

@@ -117,10 +117,16 @@ class Association(Generic[T], ABC):
                 )
 
             value = cls.__pydantic_before_validator__(value, info)
-            instance = cls.__new__(cls)
+            if isinstance(value, cls):
+                instance = value
+                instance.__payloads__ = handler(instance.__payloads__)
+            else:
+                instance = cls.__new__(cls)
+                instance.__init__()
+                instance.__payloads__ = handler(value)
             instance.__args__ = args
             instance.__generic_protocol__ = generic_type
-            instance.__init__(field_name=info.field_name, payloads=handler(value))
+            instance.field_name = info.field_name
             instance = instance.__pydantic_after_validator__(info)
 
             return instance
@@ -140,7 +146,7 @@ class Association(Generic[T], ABC):
                 json_schema=schema,
                 python_schema=schema,
             ),
-            default=LoaderCallableStatus.NO_VALUE,
+            default=cls(),
             validate_default=True,
             serialization=cls.__get_pydantic_serialize_schema__(generic_type, handler),
         )
@@ -162,15 +168,10 @@ class Association(Generic[T], ABC):
             else self.field_name
         )
 
-    def __init__(
-        self,
-        field_name: str,
-        payloads: T,
-    ):
+    def __init__(self):
         self.__instance__ = None  # type: ignore
-        self.field_name = field_name
-        self.__payloads__ = payloads
         self.__loaded__ = False
+        self.__payloads__ = None  # type: ignore
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
         if self.__instance__ is not None:
@@ -255,13 +256,16 @@ class Relation(Association[OPT_Protocol]):
 
         return wrapper
 
-    def _load(self) -> Self:
+    def _load(self):
+        # maybe during deepcopy from field default
+        if not self.__instance__:
+            return
         if self.__payloads__ is not None and self.__payloads__.__provided__:
             self.__provided__ = self.__payloads__.__provided__
         else:
             self.__payloads__ = self.validate_python(self.__provided__)
         self.__loaded__ = True
-        return self
+        return
 
     def __await__(self):
         return greenlet_spawn(self._load).__await__()
@@ -309,6 +313,12 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
     ) -> Any:
         # usually means relationship's loading is not yet completed
         return [] if value is LoaderCallableStatus.NO_VALUE else value
+
+    def __init__(self):
+        super().__init__()
+        self.__instance__ = None  # type: ignore
+        self.__loaded__ = False
+        self.__payloads__ = None  # type: ignore
 
     @cached_property
     def __provided__(self) -> InstrumentedList[Any]:
@@ -369,7 +379,10 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
 
         return wrapper
 
-    def _load(self) -> Self:
+    def _load(self):
+        # maybe during deepcopy from field default
+        if not self.__instance__:
+            return
         existing_provided = set(self.__provided__)
         self.__loaded__ = True
 
@@ -386,7 +399,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
             # it means some items were not blessed into pydantic objects.
             super().clear()
             super().extend(self.validate_python(value=self.__provided__))
-        return self
+        return
 
     def __await__(self):
         coro = greenlet_spawn(self._load).__await__()
