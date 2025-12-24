@@ -52,6 +52,8 @@ def validation_context():
     field_specifiers=(Field, PrivateAttr, NoInitField),
 )
 class TransmuterMetaclass(ModelMetaclass):
+    __provider__: type[Any]
+    __transmuter_complete__: bool
     __transmuter_associations__: dict[str, FieldInfo]
 
     def __new__(
@@ -75,10 +77,10 @@ class TransmuterMetaclass(ModelMetaclass):
             **kwargs,
         )
 
-        # Collect associations - handle both resolved types and ForwardRefs
         cls.__transmuter_associations__ = {}
         cls.__transmuter_associations_completed__ = False
         cls._ensure_associations_resolved()
+        cls.__transmuter_complete__ = True
 
         return cls
 
@@ -113,9 +115,10 @@ class TransmuterMetaclass(ModelMetaclass):
         try:
             return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
         except AttributeError as e:
-            provider = object.__getattribute__(self, "__provider__")
-            if hasattr(provider, name):
-                return getattr(provider, name)
+            if object.__getattribute__(self, "__transmuter_complete__"):
+                provider = object.__getattribute__(self, "__provider__")
+                if hasattr(provider, name):
+                    return getattr(provider, name)
             raise e
 
     @property

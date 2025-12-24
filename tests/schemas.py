@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar, Optional
+from typing import Annotated, ClassVar, Optional
 
 from pydantic._internal._model_construction import NoInitField
 
@@ -26,4 +26,4 @@ class Bar(BaseTransmuter):
     id: int | None = None
     data: str
     foo_id: int | None = None
-    foo: Relation[Foo]
+    foo: Annotated[Foo, Relation[Foo]]
