@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from arcanum.database import Session as ArcanumSession
 from arcanum.dml import delete, insert, update
 from arcanum.selectable import select
+from tests.models import Bar as BarModel
 from tests.models import Foo as FooModel
 from tests.schemas import Bar as BarProtocol
 from tests.schemas import Foo as FooProtocol
@@ -16,20 +17,22 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, engine: Engine):
 
         assert loaded is not None
 
-        proto = FooProtocol.model_validate(loaded)
-        assert proto.id == loaded.id
-        assert proto.name == loaded.name
-        assert proto.__provided__ is loaded
+        foo = FooProtocol.model_validate(loaded)
+        assert foo.id == loaded.id
+        assert foo.name == loaded.name
+        assert foo.__provided__ is loaded
 
-        assert len(proto.bars) == 2
-        assert isinstance(proto.bars[0], BarProtocol)
-        assert isinstance(proto.bars[0].foo.value, FooProtocol)
-        assert proto.bars[0].foo.value is proto
+        assert len(foo.bars) == 2
+        assert isinstance(foo.bars[0], BarProtocol)
+        assert isinstance(foo.bars[0].foo.value, FooProtocol)
+        assert foo.bars[0].foo.value is foo
 
-        new_name = "Renamed Foo"
-        proto.name = new_name
-        assert loaded.name == new_name
-        assert proto.name == new_name
+        foo.bars[0].data = "Updated Bar Data"
+        session.flush()
+
+        bar = session.get(BarModel, foo.bars[0].id)
+        assert bar is not None
+        assert bar.data == foo.bars[0].data
 
 
 def test_column_expression(engine: Engine, foo_with_bar: FooModel):

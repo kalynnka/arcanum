@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
+from copy import copy
 from functools import cached_property, wraps
 from types import UnionType
 from typing import (
@@ -121,7 +122,7 @@ class Association(Generic[T], ABC):
 
             value = cls.__pydantic_before_validator__(value, info)
             if isinstance(value, cls):
-                instance = value
+                instance = copy(value)
                 instance.__payloads__ = handler(instance.__payloads__)
             else:
                 instance = cls.__new__(cls)
