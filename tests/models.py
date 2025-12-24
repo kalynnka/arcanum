@@ -24,7 +24,8 @@ class Bar(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     data: Mapped[str] = mapped_column(String(50), nullable=False)
     foo_id: Mapped[int] = mapped_column(
-        ForeignKey(Foo.id, ondelete="CASCADE"), unique=True
+        ForeignKey(Foo.id, ondelete="CASCADE"),
+        nullable=False,
     )
     foo: Mapped[Foo] = relationship(back_populates="bars", uselist=False)
 

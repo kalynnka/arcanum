@@ -21,7 +21,7 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, engine: Engine):
         assert proto.name == loaded.name
         assert proto.__provided__ is loaded
 
-        assert len(proto.bars) == 1
+        assert len(proto.bars) == 2
         assert isinstance(proto.bars[0], BarProtocol)
         assert isinstance(proto.bars[0].foo.value, FooProtocol)
         assert proto.bars[0].foo.value is proto
@@ -30,6 +30,14 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, engine: Engine):
         proto.name = new_name
         assert loaded.name == new_name
         assert proto.name == new_name
+
+
+def test_non_optional_relation():
+    bar = BarProtocol(
+        data="Bar Data",
+        # foo=Relation(),
+    )
+    pass
 
 
 def test_column_expression(engine: Engine, foo_with_bar: FooModel):

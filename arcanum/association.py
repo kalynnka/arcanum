@@ -12,6 +12,7 @@ from typing import (
     Generic,
     Iterable,
     Literal,
+    Optional,
     ParamSpec,
     Self,
     SupportsIndex,
@@ -35,7 +36,9 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 T_Protocol = TypeVar("T_Protocol", bound="BaseTransmuter")
-OPT_Protocol = TypeVar("OPT_Protocol", bound="BaseTransmuter | None")
+OPT_Protocol = TypeVar(
+    "OPT_Protocol", bound="BaseTransmuter | Optional[BaseTransmuter]"
+)
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -185,6 +188,9 @@ class Association(Generic[T], ABC):
 
 
 class Relation(Association[OPT_Protocol]):
+    # new item and loaded item are shared the __payloads__ here
+    __payloads__: OPT_Protocol | None
+
     @classmethod
     def __get_pydantic_generic_schema__(
         cls, generic_type: type[OPT_Protocol], handler: GetCoreSchemaHandler
@@ -256,24 +262,22 @@ class Relation(Association[OPT_Protocol]):
         def wrapper(
             self: Relation[OPT_Protocol], *args: P.args, **kwargs: P.kwargs
         ) -> R:
-            if not self.__loaded__:
-                self._load()
-                self.__loaded__ = True
-
+            self._load()
             return func(self, *args, **kwargs)
 
         return wrapper
 
     def _load(self):
-        # maybe during deepcopy from field default
-        if not self.__instance__:
+        # maybe during deepcopy from field default, or the relationship is already loaded
+        if not self.__instance__ or self.__loaded__:
             return
+
         if self.__payloads__ is not None and self.__payloads__.__provided__:
             self.__provided__ = self.__payloads__.__provided__
         else:
             self.__payloads__ = self.validate_python(self.__provided__)
+
         self.__loaded__ = True
-        return
 
     def __await__(self):
         return greenlet_spawn(self._load).__await__()
@@ -294,7 +298,8 @@ class Relation(Association[OPT_Protocol]):
 
 
 class RelationCollection(list[T_Protocol], Association[T_Protocol]):
-    __payloads__: Iterable[T_Protocol]
+    # new items are held in __payloads__, loaded items are kept in the list itself
+    __payloads__: Iterable[T_Protocol] | None
 
     @classmethod
     def __get_pydantic_generic_schema__(
@@ -375,6 +380,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         super().prepare(instance, field_name)
         if not self.__loaded__ and self.__payloads__:
             self.extend(self.__payloads__)
+            self.__payloads__ = None
 
     @staticmethod
     def ensure_loaded(
@@ -384,35 +390,24 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         def wrapper(
             self: RelationCollection[T_Protocol], *args: P.args, **kwargs: P.kwargs
         ) -> R:
-            if not self.__loaded__:
-                self._load()
-                self.__loaded__ = True
+            self._load()
 
             return func(self, *args, **kwargs)
 
         return wrapper
 
     def _load(self):
-        # maybe during deepcopy from field default
-        if not self.__instance__:
+        # maybe during deepcopy from field default, or the relationship is already loaded
+        if not self.__instance__ or self.__loaded__:
             return
-        existing_provided = set(self.__provided__)
-        self.__loaded__ = True
 
-        if new_items := [
-            item.__provided__
-            for item in self
-            if hasattr(item, "__provided__")
-            and item.__provided__ not in existing_provided
-        ]:
-            self.__provided__.extend(new_items)
-
-        if len(self.__provided__) != len(self):
+        if len(self.__provided__) != super().__len__():
             # If the length of __provided__ is not equal to the length of self,
             # it means some items were not blessed into pydantic objects.
             super().clear()
             super().extend(self.validate_python(value=self.__provided__))
-        return
+
+        self.__loaded__ = True
 
     def __await__(self):
         coro = greenlet_spawn(self._load).__await__()

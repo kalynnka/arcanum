@@ -89,15 +89,21 @@ def foo_without_bar(session: Session):
 @pytest.fixture()
 def foo_with_bar(session: Session):
     """Persist and return a Foo that has an associated Bar (one-to-many)."""
-    bar = Bar(
-        data="Bar Data",
-        foo=Relation(Foo(name="Bar's Foo0")),
+    foo = Foo(name="Bar's Foo0")
+    bar1 = Bar(
+        data="Bar1 Data",
+        foo=Relation(foo),
     )
-    session.add(bar)
+    bar2 = Bar(
+        data="Bar2 Data",
+        foo=Relation(foo),
+    )
+    session.add(bar1)
+    session.add(bar2)
     session.flush()
     session.commit()
-    session.refresh(bar)
-    return bar.foo.value.__provided__
+    session.refresh(foo)
+    return foo.__provided__
 
 
 @pytest.fixture()
