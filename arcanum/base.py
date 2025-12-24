@@ -4,7 +4,6 @@ import contextlib
 from abc import ABC
 from contextvars import ContextVar
 from typing import (
-    TYPE_CHECKING,
     Any,
     ClassVar,
     Self,
@@ -21,8 +20,8 @@ from pydantic import (
     model_validator,
 )
 from pydantic._internal._generics import PydanticGenericMetadata
-from pydantic._internal._model_construction import ModelMetaclass
-from pydantic.fields import FieldInfo
+from pydantic._internal._model_construction import ModelMetaclass, NoInitField
+from pydantic.fields import Field, FieldInfo, PrivateAttr
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import LoaderCallableStatus
 
@@ -48,10 +47,12 @@ def validation_context():
         validated.reset(token)
 
 
-@dataclass_transform(kw_only_default=True)
+@dataclass_transform(
+    kw_only_default=True,
+    field_specifiers=(Field, PrivateAttr, NoInitField),
+)
 class TransmuterMetaclass(ModelMetaclass):
-    if TYPE_CHECKING:
-        __transmuter_associations__: dict[str, FieldInfo]
+    __transmuter_associations__: dict[str, FieldInfo]
 
     def __new__(
         mcs,
@@ -136,13 +137,9 @@ class TransmuterMetaclass(ModelMetaclass):
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     __provider__: ClassVar[type[Any]]
-    __provided__: Any
+    __provided__: Any = NoInitField(init=False)
 
     model_config = ConfigDict(from_attributes=True)
-
-    if TYPE_CHECKING:
-        # Override __init__ signature for type checkers to accept more flexible input
-        def __init__(self, **data: Any) -> None: ...
 
     def __getattribute__(self, name: str) -> Any:
         value: Any = object.__getattribute__(self, name)
