@@ -27,17 +27,6 @@ class AdaptedUpdateBase(ValuesBase):
     adapter: Optional[TypeAdapter] = None
     scalar_adapter: Optional[TypeAdapter] = None
 
-    def __init__(
-        self,
-        table: _DMLTableArgument,
-    ) -> None:
-        if isinstance(table, type) and issubclass(table, BaseTransmuter):
-            super().__init__(table.__provider__)
-        else:
-            super().__init__(table)
-        self.adapter = None
-        self.scalar_adapter = None
-
     def returning(
         self,
         *cols: _ColumnsClauseArgument,
@@ -389,3 +378,46 @@ class AdaptedDelete(Delete, AdaptedUpdateBase):
 
 
 class AdaptedReturningDelete(AdaptedDelete, AdaptedReturnRows[_TP]): ...
+
+
+def resolve_transmuter(table: _DMLTableArgument) -> _DMLTableArgument:
+    if isinstance(table, type) and issubclass(table, BaseTransmuter):
+        return table.__provider__
+    else:
+        return table
+
+
+def insert(table: _DMLTableArgument) -> AdaptedInsert:
+    """Create an INSERT statement for the given table.
+
+    Args:
+        table: The table to insert into. Can be a BaseTransmuter protocol or a SQLAlchemy table.
+
+    Returns:
+        An AdaptedInsert instance that supports .returning() with proper type hints.
+    """
+    return AdaptedInsert(resolve_transmuter(table))
+
+
+def update(table: _DMLTableArgument) -> AdaptedUpdate:
+    """Create an UPDATE statement for the given table.
+
+    Args:
+        table: The table to update. Can be a BaseTransmuter protocol or a SQLAlchemy table.
+
+    Returns:
+        An AdaptedUpdate instance that supports .returning() with proper type hints.
+    """
+    return AdaptedUpdate(resolve_transmuter(table))
+
+
+def delete(table: _DMLTableArgument) -> AdaptedDelete:
+    """Create a DELETE statement for the given table.
+
+    Args:
+        table: The table to delete from. Can be a BaseTransmuter protocol or a SQLAlchemy table.
+
+    Returns:
+        An AdaptedDelete instance that supports .returning() with proper type hints.
+    """
+    return AdaptedDelete(resolve_transmuter(table))

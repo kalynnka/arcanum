@@ -3,8 +3,10 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import (
     Any,
+    Protocol,
     TypeVar,
     overload,
+    runtime_checkable,
 )
 
 from pydantic import TypeAdapter
@@ -46,7 +48,13 @@ def get_cached_adapter(tp: type) -> TypeAdapter[Any]:
     return TypeAdapter(tp)
 
 
-class AdaptedReturnRows(TypedReturnsRows[_TP]):
+@runtime_checkable
+class AdaptedProtocol(Protocol):
+    adapter: TypeAdapter
+    scalar_adapter: TypeAdapter
+
+
+class AdaptedReturnRows(AdaptedProtocol, TypedReturnsRows[_TP]):
     adapter: TypeAdapter
     scalar_adapter: TypeAdapter
 

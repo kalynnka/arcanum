@@ -9,7 +9,7 @@ from sqlalchemy.sql.selectable import ForUpdateArg, TypedReturnsRows
 
 from arcanum.base import BaseTransmuter
 from arcanum.result import _T, _TP, AdaptedResult
-from arcanum.selectable import AdaptedReturnRows
+from arcanum.selectable import AdaptedProtocol, AdaptedReturnRows
 
 
 class Session(SqlalchemySession):
@@ -76,7 +76,7 @@ class Session(SqlalchemySession):
             _parent_execute_state=_parent_execute_state,
             _add_event=_add_event,
         )
-        if isinstance(statement, AdaptedReturnRows):
+        if isinstance(statement, AdaptedProtocol):
             return AdaptedResult(
                 real_result=result,
                 adapter=statement.adapter,

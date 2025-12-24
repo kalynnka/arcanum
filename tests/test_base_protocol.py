@@ -2,6 +2,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from arcanum.database import Session as ArcanumSession
+from arcanum.dml import delete, insert, update
 from arcanum.selectable import select
 from tests.models import Foo as FooModel
 from tests.schemas import Bar as BarProtocol
@@ -31,16 +32,8 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, engine: Engine):
 
 
 def test_adapted_select(engine: Engine, foo_with_bar: FooModel):
-    # stmt = select(FooProtocol)
-
-    from sqlalchemy.sql import select as sa_select
-
-    stmt = sa_select(FooModel.id, FooModel.name)
-    # result = test_session.execute(stmt)
-    # proto = result.scalars()
-
     with ArcanumSession(engine) as session:
-        stmt = select(FooProtocol, FooModel.name)
+        stmt = select(FooProtocol, FooModel.name).where(FooModel.id == foo_with_bar.id)
         result = session.execute(stmt)
         row = result.fetchone()
         assert row
@@ -51,12 +44,9 @@ def test_adapted_select(engine: Engine, foo_with_bar: FooModel):
 
 
 def test_adapted_insert(engine: Engine):
-    from arcanum.database import Session as ArcanumSession
-    from arcanum.dml import AdaptedInsert
-
     with ArcanumSession(engine) as session:
         # no returning
-        stmt = AdaptedInsert(FooProtocol).values(name="Inserted Foo")
+        stmt = insert(FooProtocol).values(name="Inserted Foo")
         session.execute(stmt)
 
         inserted_foo = (
@@ -70,10 +60,65 @@ def test_adapted_insert(engine: Engine):
 
         # with returning
         stmt = (
-            AdaptedInsert(FooProtocol)
+            insert(FooProtocol)
             .values(name="Inserted Foo With Returning")
             .returning(FooProtocol)
         )
         result = session.execute(stmt)
         inserted_foo = result.scalars().one()
         assert result
+
+
+def test_adapted_update(engine: Engine, foo_with_bar: FooModel):
+    with ArcanumSession(engine) as session:
+        foo_id = foo_with_bar.id
+
+        # update without returning
+        stmt = (
+            update(FooProtocol).where(FooModel.id == foo_id).values(name="Updated Foo")
+        )
+        session.execute(stmt)
+
+        updated = session.get(FooModel, foo_id)
+        assert updated
+        assert updated.name == "Updated Foo"
+
+        # update with returning
+        stmt = (
+            update(FooProtocol)
+            .where(FooModel.id == foo_id)
+            .values(name="Updated Foo With Returning")
+            .returning(FooProtocol)
+        )
+        result = session.execute(stmt)
+        updated_foo = result.scalars().one()
+
+        assert isinstance(updated_foo, FooProtocol)
+        assert updated_foo.id == foo_id
+        assert updated_foo.name == "Updated Foo With Returning"
+
+
+def test_adapted_delete(engine: Engine, foo_with_bar: FooModel):
+    with ArcanumSession(engine) as session:
+        # Create another foo to delete
+        new_foo = FooModel(name="To Be Deleted")
+        session.add(new_foo)
+        session.flush()
+        foo_id = new_foo.id
+
+        # delete with returning
+        stmt = delete(FooProtocol).where(FooModel.id == foo_id).returning(FooProtocol)
+        result = session.execute(stmt)
+        deleted_foo = result.scalars().one()
+
+        assert isinstance(deleted_foo, FooProtocol)
+        assert deleted_foo.id == foo_id
+        assert deleted_foo.name == "To Be Deleted"
+
+        # verify it's actually deleted
+        after = (
+            session.execute(select(FooProtocol).where(FooModel.id == foo_id))
+            .scalars()
+            .one_or_none()
+        )
+        assert after is None
