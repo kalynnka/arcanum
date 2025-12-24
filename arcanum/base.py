@@ -105,7 +105,7 @@ class TransmuterMetaclass(ModelMetaclass):
 
             # Check if it's an Association
             origin = get_origin(annotation)
-            if origin is not None:
+            if origin:
                 if isinstance(origin, type) and issubclass(origin, Association):
                     self.__transmuter_associations__[name] = info
             elif isinstance(annotation, type) and issubclass(annotation, Association):
