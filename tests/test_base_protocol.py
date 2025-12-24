@@ -32,14 +32,6 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, engine: Engine):
         assert proto.name == new_name
 
 
-def test_non_optional_relation():
-    bar = BarProtocol(
-        data="Bar Data",
-        # foo=Relation(),
-    )
-    pass
-
-
 def test_column_expression(engine: Engine, foo_with_bar: FooModel):
     stmt = select(FooProtocol).where(FooProtocol["id"] == foo_with_bar.id)
     with ArcanumSession(engine) as session:
