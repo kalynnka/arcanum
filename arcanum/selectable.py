@@ -20,10 +20,13 @@ from sqlalchemy import (
 from sqlalchemy.inspection import _InspectableTypeProtocol
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import Select
+from sqlalchemy.sql._typing import _ColumnExpressionArgument
 from sqlalchemy.sql._typing import _TypedColumnClauseArgument as _TCCA
 from sqlalchemy.sql.selectable import TypedReturnsRows
+from sqlalchemy.util.typing import Self
 
 from arcanum.base import BaseTransmuter
+from arcanum.expression import Expression
 
 _TP = TypeVar("_TP", bound=tuple[Any, ...])
 
@@ -70,6 +73,17 @@ class AdaptedSelect(Select, AdaptedReturnRows[_TP]):
         super().__init__(*entities, **dialect_kw)
         self.adapter = adapter
         self.scalar_adapter = scalar_adapter
+
+    def where(
+        self,
+        *whereclause: _ColumnExpressionArgument[bool] | Expression[Any],
+    ) -> Self:
+        return super().where(
+            *(
+                clause() if isinstance(clause, Expression) else clause
+                for clause in whereclause
+            )  # pyright: ignore[reportArgumentType]
+        )
 
 
 def resolve_entities(

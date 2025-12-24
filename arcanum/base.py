@@ -3,7 +3,15 @@ from __future__ import annotations
 import contextlib
 from abc import ABC
 from contextvars import ContextVar
-from typing import Any, Self, TypeVar, dataclass_transform
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Self,
+    TypeVar,
+    dataclass_transform,
+    get_origin,
+    get_type_hints,
+)
 
 from pydantic import (
     BaseModel,
@@ -11,11 +19,14 @@ from pydantic import (
     ModelWrapValidatorHandler,
     model_validator,
 )
+from pydantic._internal._generics import PydanticGenericMetadata
 from pydantic._internal._model_construction import ModelMetaclass
+from pydantic.fields import FieldInfo
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import LoaderCallableStatus
 
 from arcanum.association import Association
+from arcanum.expression import Column
 
 T = TypeVar("T", bound="BaseTransmuter")
 
@@ -38,30 +49,101 @@ def validation_context():
 
 @dataclass_transform(kw_only_default=True)
 class TransmuterMetaclass(ModelMetaclass):
-    __provider__: type[Any]
+    if TYPE_CHECKING:
+        __transmuter_associations__: dict[str, FieldInfo]
+
+    def __new__(
+        mcs,
+        cls_name: str,
+        bases: tuple[type[Any], ...],
+        namespace: dict[str, Any],
+        __pydantic_generic_metadata__: PydanticGenericMetadata | None = None,
+        __pydantic_reset_parent_namespace__: bool = True,
+        _create_model_module: str | None = None,
+        **kwargs: Any,
+    ) -> TransmuterMetaclass:
+        cls: TransmuterMetaclass = super().__new__(
+            mcs,
+            cls_name,
+            bases,
+            namespace,
+            __pydantic_generic_metadata__,
+            __pydantic_reset_parent_namespace__,
+            _create_model_module,
+            **kwargs,
+        )
+
+        # Collect associations - handle both resolved types and ForwardRefs
+        cls.__transmuter_associations__ = {}
+        cls.__transmuter_associations_completed__ = False
+        cls._ensure_associations_resolved()
+
+        return cls
+
+    def _ensure_associations_resolved(self) -> None:
+        if self.__transmuter_associations_completed__:
+            return
+
+        # Use get_type_hints to resolve all ForwardRefs at once
+        try:
+            resolved_hints = get_type_hints(self)
+            self.__transmuter_associations_completed__ = True
+        except (NameError, AttributeError):
+            # Can't resolve all hints yet, fall back to manual checking
+            resolved_hints = {}
+
+        for name, info in self.__pydantic_fields__.items():
+            if name in self.__transmuter_associations__:
+                continue  # Already processed
+
+            # Use the resolved type hint if available
+            annotation = resolved_hints.get(name, info.annotation)
+
+            # Check if it's an Association
+            origin = get_origin(annotation)
+            if origin is not None:
+                if isinstance(origin, type) and issubclass(origin, Association):
+                    self.__transmuter_associations__[name] = info
+            elif isinstance(annotation, type) and issubclass(annotation, Association):
+                self.__transmuter_associations__[name] = info
 
     def __getattr__(self, name: str) -> Any:
         try:
             return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
         except AttributeError as e:
             provider = object.__getattribute__(self, "__provider__")
-            if name == "__clause_element__":
-                breakpoint()
             if hasattr(provider, name):
                 return getattr(provider, name)
             raise e
 
+    @property
+    def model_associations(self) -> dict[str, FieldInfo]:
+        if not self.__transmuter_associations_completed__:
+            self._ensure_associations_resolved()
+        return self.__transmuter_associations__
+
+    # TODO: No good way to give proper generic type to Column here
+    def __getitem__(self, item: str) -> Column[Any]:
+        if info := self.__pydantic_fields__.get(item):
+            # false positive from pyright here
+            # type[BaseTransmuter] or its subclasses are instances of the metaclass TransmuterMetaclass here
+            column = Column[info.annotation](self, item, info)  # pyright: ignore[reportArgumentType]
+            column.__args__ = (info.annotation,)
+            return column
+        raise KeyError(f"Field '{item}' not found in {self.__name__}")
+
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
-    __provided__: Any | None = None
+    __provider__: type[Any]
+    __provided__: Any
 
     model_config = ConfigDict(from_attributes=True)
 
     def __getattribute__(self, name: str) -> Any:
         value: Any = object.__getattribute__(self, name)
-        if isinstance(value, Association):
+        if name in type(self).model_associations and isinstance(value, Association):
             value.prepare(self, name)
-        return value  # type: ignore
+        return value
 
     def __getattr__(self, name: str) -> Any:
         # only called when attribute not found in normal places
@@ -82,9 +164,10 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         self.__provided__ = object.__getattribute__(
             self, "__provided__"
         ) or self.__provider__(**self.model_dump(exclude={"foo", "bar"}))
-        for field_name, value in self:
-            if isinstance(value, Association):
-                value.prepare(self, field_name)
+        for name in type(self).model_associations:
+            association = getattr(self, name)
+            if isinstance(association, Association):
+                association.prepare(self, name)
 
     @model_validator(mode="wrap")
     @classmethod

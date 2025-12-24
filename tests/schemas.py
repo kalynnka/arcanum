@@ -8,7 +8,7 @@ from tests.models import Bar as BarModel
 from tests.models import Foo as FooModel
 
 
-class Foo(BaseTransmuter):  # noqa: N801 - requested lowercase
+class Foo(BaseTransmuter):
     __provider__: type[FooModel] = FooModel
     __provided__: FooModel
 
@@ -17,7 +17,7 @@ class Foo(BaseTransmuter):  # noqa: N801 - requested lowercase
     bar: Relation[Optional[Bar]]
 
 
-class Bar(BaseTransmuter):  # noqa: N801 - requested lowercase
+class Bar(BaseTransmuter):
     __provider__: type[BarModel] = BarModel
     __provided__: BarModel
 
@@ -25,6 +25,3 @@ class Bar(BaseTransmuter):  # noqa: N801 - requested lowercase
     data: str
     foo_id: int | None = None
     foo: Relation[Foo]
-
-
-__all__ = ["Foo", "Bar"]

@@ -31,6 +31,16 @@ def test_bless_foo_into_protocol(foo_with_bar: FooModel, engine: Engine):
         assert proto.name == new_name
 
 
+def test_column_expression(engine: Engine, foo_with_bar: FooModel):
+    stmt = select(FooProtocol).where(FooProtocol["id"] == foo_with_bar.id)
+    with ArcanumSession(engine) as session:
+        result = session.execute(stmt)
+        foo = result.scalars().one()
+        assert foo is not None
+        assert foo.id == foo_with_bar.id
+        assert foo.name == foo_with_bar.name
+
+
 def test_adapted_select(engine: Engine, foo_with_bar: FooModel):
     with ArcanumSession(engine) as session:
         stmt = select(FooProtocol, FooModel.name).where(FooModel.id == foo_with_bar.id)
