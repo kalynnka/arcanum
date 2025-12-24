@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Self,
     TypeVar,
     dataclass_transform,
@@ -134,10 +135,14 @@ class TransmuterMetaclass(ModelMetaclass):
 
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
-    __provider__: type[Any]
+    __provider__: ClassVar[type[Any]]
     __provided__: Any
 
     model_config = ConfigDict(from_attributes=True)
+
+    if TYPE_CHECKING:
+        # Override __init__ signature for type checkers to accept more flexible input
+        def __init__(self, **data: Any) -> None: ...
 
     def __getattribute__(self, name: str) -> Any:
         value: Any = object.__getattribute__(self, name)
@@ -161,9 +166,7 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        self.__provided__ = object.__getattribute__(
-            self, "__provided__"
-        ) or self.__provider__(**self.model_dump(exclude={"foo", "bar"}))
+        self.__provided__ = self.__provider__(**self.model_dump(exclude={"foo", "bar"}))
         for name in type(self).model_associations:
             association = getattr(self, name)
             if isinstance(association, Association):

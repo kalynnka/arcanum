@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import ClassVar, Optional
 
 from arcanum.association import Relation
 from arcanum.base import BaseTransmuter
@@ -9,7 +9,7 @@ from tests.models import Foo as FooModel
 
 
 class Foo(BaseTransmuter):
-    __provider__: type[FooModel] = FooModel
+    __provider__: ClassVar[type[FooModel]] = FooModel
     __provided__: FooModel
 
     id: int | None = None
@@ -18,7 +18,7 @@ class Foo(BaseTransmuter):
 
 
 class Bar(BaseTransmuter):
-    __provider__: type[BarModel] = BarModel
+    __provider__: ClassVar[type[BarModel]] = BarModel
     __provided__: BarModel
 
     id: int | None = None

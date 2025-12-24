@@ -5,7 +5,6 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from arcanum.base import validation_context
-from tests.models import Bar as BarModel
 from tests.models import Base
 from tests.schemas import Bar, Foo
 
@@ -78,7 +77,7 @@ def session(engine: Engine):
 @pytest.fixture()
 def foo_without_bar(session: Session):
     """Persist and return a Foo without an associated Bar."""
-    foo = BarModel(name="Foo Without Bar")
+    foo = Foo(name="Foo Without Bar")
     session.add(foo)
     session.flush()  # populate PK
     session.commit()
