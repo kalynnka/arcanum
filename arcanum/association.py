@@ -8,7 +8,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    ClassVar,
     Concatenate,
     Generator,
     Generic,
@@ -42,16 +41,15 @@ from sqlalchemy.sql import functions
 from sqlalchemy.util import greenlet_spawn
 
 from arcanum.expression import Column, Expression
+from arcanum.utils import get_cached_adapter
 
 if TYPE_CHECKING:
     from arcanum.base import BaseTransmuter
     from arcanum.database import Session
 
-T = TypeVar("T")
-T_Protocol = TypeVar("T_Protocol", bound="BaseTransmuter")
-OPT_Protocol = TypeVar(
-    "OPT_Protocol", bound="BaseTransmuter | Optional[BaseTransmuter]"
-)
+A = TypeVar("A")
+T = TypeVar("T", bound="BaseTransmuter")
+Optional_T = TypeVar("Optional_T", bound="BaseTransmuter | Optional[BaseTransmuter]")
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -84,14 +82,12 @@ def eager_load(*columns: Column, recursion_depth: int | None = None):
     ]
 
 
-class Association(Generic[T], ABC):
-    __generic_adaptors__: ClassVar[dict[type, TypeAdapter[Any]]] = {}
-
-    __args__: tuple[T, ...]
-    __generic_protocol__: Type[T]
+class Association(Generic[A], ABC):
+    __args__: tuple[A, ...]
+    __generic__: Type[A]
     __instance__: BaseTransmuter | None
     __loaded__: bool
-    __payloads__: T | None
+    __payloads__: A | None
 
     field_name: str
 
@@ -110,7 +106,7 @@ class Association(Generic[T], ABC):
     @classmethod
     def __get_pydantic_generic_schema__(
         cls,
-        generic_type: Type[T],
+        generic_type: Type[A],
         handler: GetCoreSchemaHandler,
     ) -> core_schema.CoreSchema:
         raise NotImplementedError()
@@ -118,14 +114,14 @@ class Association(Generic[T], ABC):
     @classmethod
     def __get_pydantic_serialize_schema__(
         cls,
-        generic_type: Type[T],
+        generic_type: Type[A],
         handler: GetCoreSchemaHandler,
     ) -> core_schema.SerSchema | None:
         raise NotImplementedError()
 
     @classmethod
     def __get_pydantic_core_schema__(
-        cls, source_type: Type[Association[T]], handler: GetCoreSchemaHandler
+        cls, source_type: Type[Association[A]], handler: GetCoreSchemaHandler
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
 
@@ -138,7 +134,7 @@ class Association(Generic[T], ABC):
             value: Any,
             handler: core_schema.ValidatorFunctionWrapHandler,
             info: core_schema.ValidationInfo,
-        ) -> Association[T]:
+        ) -> Association[A]:
             if not info.field_name:
                 raise ValueError(
                     f"The association type {source_type} must be used as a model field."
@@ -153,7 +149,7 @@ class Association(Generic[T], ABC):
                 instance.__init__()
                 instance.__payloads__ = handler(value)
             instance.__args__ = args
-            instance.__generic_protocol__ = generic_type
+            instance.__generic__ = generic_type
             instance.field_name = info.field_name
             instance = instance.__pydantic_after_validator__(info)
 
@@ -180,12 +176,8 @@ class Association(Generic[T], ABC):
         )
 
     @cached_property
-    def __validator__(self) -> TypeAdapter[T]:
-        if self.__generic_protocol__ not in self.__generic_adaptors__:
-            self.__generic_adaptors__[self.__generic_protocol__] = TypeAdapter(
-                self.__generic_protocol__
-            )
-        return self.__generic_adaptors__[self.__generic_protocol__]
+    def __validator__(self) -> TypeAdapter[A]:
+        return get_cached_adapter(self.__generic__)
 
     @cached_property
     def used_name(self) -> str:
@@ -196,7 +188,7 @@ class Association(Generic[T], ABC):
             else self.field_name
         )
 
-    def __init__(self, payloads: T | None = None):
+    def __init__(self, payloads: A | None = None):
         self.__instance__ = None
         self.__loaded__ = False
         self.__payloads__ = payloads
@@ -207,18 +199,18 @@ class Association(Generic[T], ABC):
         self.__instance__ = instance
         self.field_name = field_name
 
-    def validate_python(self, value: Any) -> T:
+    def validate_python(self, value: Any) -> A:
         """Validate the value against the type adapter."""
         return self.__validator__.validate_python(value)
 
 
-class Relation(Association[OPT_Protocol]):
+class Relation(Association[Optional_T]):
     # new item and loaded item are shared the __payloads__ here
-    __payloads__: OPT_Protocol | None
+    __payloads__: Optional_T | None
 
     @classmethod
     def __get_pydantic_generic_schema__(
-        cls, generic_type: type[OPT_Protocol], handler: GetCoreSchemaHandler
+        cls, generic_type: type[Optional_T], handler: GetCoreSchemaHandler
     ) -> core_schema.CoreSchema:
         return core_schema.union_schema(
             choices=[
@@ -231,9 +223,9 @@ class Relation(Association[OPT_Protocol]):
 
     @classmethod
     def __get_pydantic_serialize_schema__(
-        cls, generic_type: type[OPT_Protocol], handler: GetCoreSchemaHandler
+        cls, generic_type: type[Optional_T], handler: GetCoreSchemaHandler
     ) -> core_schema.SerSchema | None:
-        def serialize(value: Relation[OPT_Protocol]) -> Any:
+        def serialize(value: Relation[Optional_T]) -> Any:
             return value.__payloads__
 
         return core_schema.plain_serializer_function_ser_schema(serialize)
@@ -281,12 +273,10 @@ class Relation(Association[OPT_Protocol]):
 
     @staticmethod
     def ensure_loaded(
-        func: Callable[Concatenate[Relation[OPT_Protocol], P], R],
-    ) -> Callable[Concatenate[Relation[OPT_Protocol], P], R]:
+        func: Callable[Concatenate[Relation[Optional_T], P], R],
+    ) -> Callable[Concatenate[Relation[Optional_T], P], R]:
         @wraps(func)
-        def wrapper(
-            self: Relation[OPT_Protocol], *args: P.args, **kwargs: P.kwargs
-        ) -> R:
+        def wrapper(self: Relation[Optional_T], *args: P.args, **kwargs: P.kwargs) -> R:
             self._load()
             return func(self, *args, **kwargs)
 
@@ -309,12 +299,12 @@ class Relation(Association[OPT_Protocol]):
 
     @property
     @ensure_loaded
-    def value(self) -> OPT_Protocol:
+    def value(self) -> Optional_T:
         return self.__payloads__  # type: ignore
 
     @value.setter
     @ensure_loaded
-    def value(self, object: OPT_Protocol):
+    def value(self, object: Optional_T):
         object = self.validate_python(object)
         if object is not None:
             self.__provided__ = object.__provided__
@@ -322,23 +312,23 @@ class Relation(Association[OPT_Protocol]):
             self.__provided__ = None
 
 
-class RelationCollection(list[T_Protocol], Association[T_Protocol]):
+class RelationCollection(list[T], Association[T]):
     # new items are held in __payloads__, loaded items are kept in the list itself
-    __payloads__: Iterable[T_Protocol] | None
+    __payloads__: Iterable[T] | None
 
     @classmethod
     def __get_pydantic_generic_schema__(
         cls,
-        generic_type: Type[T_Protocol],
+        generic_type: Type[T],
         handler: GetCoreSchemaHandler,
     ) -> core_schema.CoreSchema:
         return core_schema.list_schema(handler.generate_schema(generic_type))
 
     @classmethod
     def __get_pydantic_serialize_schema__(
-        cls, association: Type[T_Protocol], handler: GetCoreSchemaHandler
+        cls, association: Type[T], handler: GetCoreSchemaHandler
     ) -> core_schema.SerSchema | None:
-        def serialize(value: RelationCollection[T_Protocol]) -> Any:
+        def serialize(value: RelationCollection[T]) -> Any:
             return value
 
         return core_schema.plain_serializer_function_ser_schema(serialize)
@@ -352,7 +342,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         # usually means relationship's loading is not yet completed
         return [] if value is LoaderCallableStatus.NO_VALUE else value
 
-    def __init__(self, payloads: Iterable[T_Protocol] | None = None):
+    def __init__(self, payloads: Iterable[T] | None = None):
         super().__init__()
         self.__instance__ = None
         self.__loaded__ = False
@@ -381,24 +371,18 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
             ) from invalid_request_error
 
     @cached_property
-    def __list_validator__(self) -> TypeAdapter[list[T_Protocol]]:
-        if list[self.__generic_protocol__] not in self.__generic_adaptors__:
-            self.__generic_adaptors__[list[self.__generic_protocol__]] = TypeAdapter(
-                list[self.__generic_protocol__]
-            )
-        return self.__generic_adaptors__[list[self.__generic_protocol__]]
+    def __list_validator__(self) -> TypeAdapter[list[T]]:
+        return get_cached_adapter(list[self.__generic__])
 
     @overload
-    def validate_python(self, value: T_Protocol) -> T_Protocol: ...
+    def validate_python(self, value: T) -> T: ...
     @overload
-    def validate_python(self, value: Iterable[Any]) -> list[T_Protocol]: ...
+    def validate_python(self, value: Iterable[Any]) -> list[T]: ...
     @overload
-    def validate_python(self, value: Any) -> T_Protocol: ...
-    def validate_python(
-        self, value: Any | Iterable[Any]
-    ) -> T_Protocol | Iterable[T_Protocol]:
+    def validate_python(self, value: Any) -> T: ...
+    def validate_python(self, value: Any | Iterable[Any]) -> T | Iterable[T]:
         """Validate the value against the type adapter."""
-        origin = get_origin(self.__generic_protocol__) or self.__generic_protocol__
+        origin = get_origin(self.__generic__) or self.__generic__
         if isinstance(value, Iterable) and not isinstance(value, origin):
             return self.__list_validator__.validate_python(value)
         return self.__validator__.validate_python(value)
@@ -411,11 +395,11 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
 
     @staticmethod
     def ensure_loaded(
-        func: Callable[Concatenate[RelationCollection[T_Protocol], P], R],
-    ) -> Callable[Concatenate[RelationCollection[T_Protocol], P], R]:
+        func: Callable[Concatenate[RelationCollection[T], P], R],
+    ) -> Callable[Concatenate[RelationCollection[T], P], R]:
         @wraps(func)
         def wrapper(
-            self: RelationCollection[T_Protocol], *args: P.args, **kwargs: P.kwargs
+            self: RelationCollection[T], *args: P.args, **kwargs: P.kwargs
         ) -> R:
             self._load()
 
@@ -441,13 +425,11 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         return coro
 
     @overload
-    def __getitem__(self, index: SupportsIndex) -> T_Protocol: ...
+    def __getitem__(self, index: SupportsIndex) -> T: ...
     @overload
-    def __getitem__(self, index: slice) -> list[T_Protocol]: ...
+    def __getitem__(self, index: slice) -> list[T]: ...
     @ensure_loaded
-    def __getitem__(
-        self, index: SupportsIndex | slice
-    ) -> T_Protocol | list[T_Protocol]:
+    def __getitem__(self, index: SupportsIndex | slice) -> T | list[T]:
         return super().__getitem__(index)
 
     @ensure_loaded
@@ -459,7 +441,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         return super().__len__()
 
     @ensure_loaded
-    def __contains__(self, key: T_Protocol) -> bool:
+    def __contains__(self, key: T) -> bool:
         return super().__contains__(key)
 
     @ensure_loaded
@@ -467,13 +449,11 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         return bool(super())
 
     @overload
-    def __setitem__(self, key: SupportsIndex, value: T_Protocol) -> None: ...
+    def __setitem__(self, key: SupportsIndex, value: T) -> None: ...
     @overload
-    def __setitem__(self, key: slice, value: Iterable[T_Protocol]) -> None: ...
+    def __setitem__(self, key: slice, value: Iterable[T]) -> None: ...
     @ensure_loaded
-    def __setitem__(
-        self, key: SupportsIndex | slice, value: T_Protocol | Iterable[T_Protocol]
-    ):
+    def __setitem__(self, key: SupportsIndex | slice, value: T | Iterable[T]):
         if isinstance(value, Iterable):
             items = self.validate_python(value)
             self.__provided__[key] = [item.__provided__ for item in items]
@@ -489,12 +469,12 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         super().__delitem__(key)
 
     @ensure_loaded
-    def __add__(self, other: Iterable[T_Protocol]):
+    def __add__(self, other: Iterable[T]):
         self.extend(other)
         return self
 
     @ensure_loaded
-    def __iadd__(self, other: Iterable[T_Protocol]):
+    def __iadd__(self, other: Iterable[T]):
         self.extend(other)
         return self
 
@@ -514,27 +494,27 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         )
 
     @ensure_loaded
-    def __eq__(self, other: list[T_Protocol]):
+    def __eq__(self, other: list[T]):
         return super().__eq__(other)
 
     @ensure_loaded
-    def __ne__(self, other: list[T_Protocol]):
+    def __ne__(self, other: list[T]):
         return super().__ne__(other)
 
     @ensure_loaded
-    def __lt__(self, other: list[T_Protocol]):
+    def __lt__(self, other: list[T]):
         return super().__lt__(other)
 
     @ensure_loaded
-    def __le__(self, other: list[T_Protocol]):
+    def __le__(self, other: list[T]):
         return super().__le__(other)
 
     @ensure_loaded
-    def __gt__(self, other: list[T_Protocol]):
+    def __gt__(self, other: list[T]):
         return super().__gt__(other)
 
     @ensure_loaded
-    def __ge__(self, other: list[T_Protocol]):
+    def __ge__(self, other: list[T]):
         return super().__ge__(other)
 
     @ensure_loaded
@@ -550,7 +530,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         return super().__reversed__()
 
     @ensure_loaded
-    def append(self, object: T_Protocol):
+    def append(self, object: T):
         object = self.validate_python(object)  # type: ignore
         self.__provided__.append(
             object.__provided__ if hasattr(object, "__provided__") else object
@@ -558,7 +538,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         super().append(object)
 
     @ensure_loaded
-    def extend(self, iterable: Iterable[T_Protocol]):
+    def extend(self, iterable: Iterable[T]):
         iterable = self.validate_python(iterable)
         self.__provided__.extend(
             (
@@ -578,7 +558,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         return super().copy()
 
     @ensure_loaded
-    def count(self, value: T_Protocol) -> int:
+    def count(self, value: T) -> int:
         return super().count(value)
 
     @ensure_loaded
@@ -588,7 +568,7 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         return super().index(value, start, stop)
 
     @ensure_loaded
-    def insert(self, index: SupportsIndex, object: T_Protocol):
+    def insert(self, index: SupportsIndex, object: T):
         object = self.validate_python(object)  # type: ignore
         self.__provided__.insert(index, object.__provided__)
         super().insert(index, object)
@@ -600,8 +580,8 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         return item
 
     @ensure_loaded
-    def remove(self, value: T_Protocol):
-        item: T_Protocol = self.validate_python(value)  # type: ignore
+    def remove(self, value: T):
+        item: T = self.validate_python(value)  # type: ignore
         self.__provided__.remove(item.__provided__)
         super().remove(value)
 
@@ -610,15 +590,13 @@ class RelationCollection(list[T_Protocol], Association[T_Protocol]):
         super().reverse()
 
     @ensure_loaded
-    def sort(
-        self, *, key: Callable[[T_Protocol], Any] | None = None, reverse: bool = False
-    ):
+    def sort(self, *, key: Callable[[T], Any] | None = None, reverse: bool = False):
         super().sort(key=key, reverse=reverse)  # type: ignore
 
 
-class PassiveRelationCollection(RelationCollection[T_Protocol]):
+class PassiveRelationCollection(RelationCollection[T]):
     # new items kept in __payloads__, and passive relation collection never keep loaded items
-    __payloads__: Iterable[T_Protocol] | None
+    __payloads__: Iterable[T] | None
     batch_size: int = 10
 
     @classmethod
@@ -664,7 +642,7 @@ class PassiveRelationCollection(RelationCollection[T_Protocol]):
         statement = self.__provided__.select().with_only_columns(functions.count())
         return self.__session__.execute(statement).scalar_one()
 
-    def __contains__(self, key: T_Protocol) -> bool:
+    def __contains__(self, key: T) -> bool:
         raise NotImplementedError(
             "Contain check on PassiveRelationCollection is not supported yet. Blocked by pk mapping in between."
         )
@@ -693,7 +671,7 @@ class PassiveRelationCollection(RelationCollection[T_Protocol]):
         expression: Expression | None = None,
         eager_loads: Iterable[Column] | None = None,
         **filters: Any,
-    ) -> list[T_Protocol]:
+    ) -> list[T]:
         statement = self.__provided__.select()
         if limit:
             statement = statement.limit(limit)
@@ -722,7 +700,7 @@ class PassiveRelationCollection(RelationCollection[T_Protocol]):
         expression: Expression | None = None,
         eager_loads: Iterable[Column] | None = None,
         **filters: Any,
-    ) -> Generator[Iterable[T_Protocol], None, None]:
+    ) -> Generator[Iterable[T], None, None]:
         statement = self.__provided__.select().execution_options(
             yield_per=size or self.batch_size
         )
@@ -747,11 +725,11 @@ class PassiveRelationCollection(RelationCollection[T_Protocol]):
         ):
             yield self.validate_python(partition)
 
-    def append(self, object: T_Protocol):
+    def append(self, object: T):
         value = self.validate_python(object)
         self.__provided__.add(value.__provided__)
 
-    def extend(self, iterable: Iterable[T_Protocol]):
+    def extend(self, iterable: Iterable[T]):
         iterable = self.validate_python(iterable)
         self.__session__.execute(
             self.__provided__.insert().values([item.__provided__ for item in iterable])
@@ -773,6 +751,6 @@ class PassiveRelationCollection(RelationCollection[T_Protocol]):
         statement = select(functions.count()).select_from(statement.subquery())
         return self.__session__.execute(statement).scalar_one()
 
-    def remove(self, value: T_Protocol):
+    def remove(self, value: T):
         item = self.validate_python(value)
         self.__provided__.remove(item.__provided__)

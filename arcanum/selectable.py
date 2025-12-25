@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import (
     Any,
     Protocol,
@@ -27,6 +26,7 @@ from sqlalchemy.util.typing import Self
 
 from arcanum.base import BaseTransmuter
 from arcanum.expression import Expression
+from arcanum.utils import get_cached_adapter
 
 _TP = TypeVar("_TP", bound=tuple[Any, ...])
 
@@ -43,12 +43,6 @@ _T9 = TypeVar("_T9", bound=Any)
 
 
 S = TypeVar("S", bound=Insert | Select | Update | Delete)
-
-
-@lru_cache(maxsize=None)
-def get_cached_adapter(tp: type) -> TypeAdapter[Any]:
-    """Cached TypeAdapter factory to avoid recreating adapters for the same type."""
-    return TypeAdapter(tp)
 
 
 @runtime_checkable
