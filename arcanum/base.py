@@ -4,8 +4,10 @@ import contextlib
 from abc import ABC
 from contextvars import ContextVar
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
+    Optional,
     Self,
     TypeVar,
     dataclass_transform,
@@ -17,11 +19,13 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     ModelWrapValidatorHandler,
+    create_model,
     model_validator,
 )
 from pydantic._internal._generics import PydanticGenericMetadata
 from pydantic._internal._model_construction import ModelMetaclass, NoInitField
 from pydantic.fields import Field, FieldInfo, PrivateAttr
+from pydantic_core.core_schema import model_field
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import LoaderCallableStatus
 
@@ -29,6 +33,7 @@ from arcanum.association import Association
 from arcanum.expression import Column
 
 T = TypeVar("T", bound="BaseTransmuter")
+M = TypeVar("M", bound="TransmuterMetaclass")
 
 
 class LoadedData: ...
@@ -47,14 +52,25 @@ def validation_context():
         validated.reset(token)
 
 
+class Identity:
+    """Marker class for identity fields that could not be set in creation and immutable."""
+
+
 @dataclass_transform(
     kw_only_default=True,
     field_specifiers=(Field, PrivateAttr, NoInitField),
 )
 class TransmuterMetaclass(ModelMetaclass):
-    __provider__: type[Any]
-    __transmuter_complete__: bool
-    __transmuter_associations__: dict[str, FieldInfo]
+    if TYPE_CHECKING:
+        __pydantic_fields__: dict[str, FieldInfo]
+        __transmuter_associations__: dict[str, FieldInfo]
+        __transmuter_identities__: dict[str, FieldInfo]
+        __transmuter_complete__: bool
+        __transmuter_create_model__: Optional[type[BaseModel]]
+        __transmuter_update_model__: Optional[type[BaseModel]]
+
+        model_config: ConfigDict
+        model_fields: dict[str, model_field.ModelField]
 
     def __new__(
         mcs,
@@ -79,7 +95,11 @@ class TransmuterMetaclass(ModelMetaclass):
 
         cls.__transmuter_associations__ = {}
         cls.__transmuter_associations_completed__ = False
+        cls.__transmuter_identities__ = {}
+        cls.__transmuter_create_model__ = None
+        cls.__transmuter_update_model__ = None
         cls._ensure_associations_resolved()
+        cls._collect_identities()
         cls.__transmuter_complete__ = True
 
         return cls
@@ -111,6 +131,16 @@ class TransmuterMetaclass(ModelMetaclass):
             elif isinstance(annotation, type) and issubclass(annotation, Association):
                 self.__transmuter_associations__[name] = info
 
+    def _collect_identities(self) -> None:
+        for name, info in self.__pydantic_fields__.items():
+            for metadata in info.metadata:
+                if isinstance(metadata, type) and issubclass(metadata, Identity):
+                    self.__transmuter_identities__[name] = info
+                    break
+                elif isinstance(metadata, Identity):
+                    self.__transmuter_identities__[name] = info
+                    break
+
     def __getattr__(self, name: str) -> Any:
         try:
             return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
@@ -126,6 +156,60 @@ class TransmuterMetaclass(ModelMetaclass):
         if not self.__transmuter_associations_completed__:
             self._ensure_associations_resolved()
         return self.__transmuter_associations__
+
+    @property
+    def model_identities(self) -> dict[str, FieldInfo]:
+        return self.__transmuter_identities__
+
+    @property
+    def Create(self) -> type[BaseModel]:
+        if self.__transmuter_create_model__ is not None:
+            return self.__transmuter_create_model__
+
+        config = self.model_config.copy()
+
+        field_definitions: dict[str, tuple[Any, FieldInfo]] = {}
+        # TODO: include nested associations
+        for field_name in set(
+            self.__pydantic_fields__.keys()
+            - self.model_identities.keys()
+            - set(self.model_associations.keys())  # TODO: include nested associations
+        ):
+            info = self.__pydantic_fields__[field_name]
+            field_definitions[field_name] = (info.annotation, info)
+
+        self.__transmuter_create_model__ = create_model(
+            f"{self.__name__}Create",
+            __config__=config,
+            __module__=self.__module__,
+            **field_definitions,  # type: ignore
+        )
+
+        return self.__transmuter_create_model__  # type: ignore
+
+    @property
+    def Update(self) -> type[BaseModel]:
+        if self.__transmuter_update_model__ is not None:
+            return self.__transmuter_update_model__
+
+        config = self.model_config.copy()
+
+        field_definitions: dict[str, tuple[Any, FieldInfo]] = {}
+        # TODO: include nested associations
+        for field_name in set(
+            self.__pydantic_fields__.keys() - set(self.model_associations.keys())
+        ):
+            info = self.__pydantic_fields__[field_name]
+            if not info.frozen:
+                field_definitions[field_name] = (Optional[info.annotation], info)
+
+        self.__transmuter_update_model__ = create_model(
+            f"{self.__name__}Update",
+            __config__=config,
+            __module__=self.__module__,
+            **field_definitions,  # type: ignore
+        )
+        return self.__transmuter_update_model__  # type: ignore
 
     # TODO: No good way to give proper generic type to Column here
     def __getitem__(self, item: str) -> Column[Any]:
@@ -211,3 +295,20 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             # normal initialization
             instance = handler(data)
         return instance
+
+    @classmethod
+    def shell(cls, create_partial: BaseModel) -> Self:
+        """Create a new instance using the Create partial model. No good way to do proper typing for the input data"""
+        partial = cls.Create.model_validate(create_partial)
+        return cls(**partial.model_dump())
+
+    def absorb(self, update_partial: BaseModel) -> Self:
+        """Update the instance using the Update partial model."""
+        partial = (
+            type(self)
+            .Update.model_validate(update_partial)
+            .model_dump(exclude_unset=True)
+        )
+        for key, value in partial.items():
+            setattr(self, key, value)
+        return self

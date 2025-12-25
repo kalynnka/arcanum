@@ -1,3 +1,5 @@
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
@@ -136,3 +138,29 @@ def test_adapted_delete(engine: Engine, foo_with_bar: FooModel):
             .one_or_none()
         )
         assert after is None
+
+
+def test_create_partial_models():
+    partial = FooProtocol.Create(name="Partial Foo")
+    assert getattr(partial, "name") == "Partial Foo"
+    assert hasattr(partial, "id") is False
+
+    foo = FooProtocol.shell(partial)
+    assert foo.name == "Partial Foo"
+    assert foo.id is None
+
+    # text ignored fields get defaulted
+    foo_with_extra = FooProtocol.shell(FooProtocol.Create(id=2, name="Another"))
+    assert foo_with_extra.id is None
+    assert foo_with_extra.name == "Another"
+
+
+def test_update_partial_models():
+    partial = FooProtocol.Update(name="Updated Name")
+
+    foo = FooProtocol(id=2, name="Initial Name").absorb(partial)
+    assert foo.name == "Updated Name"
+    assert foo.id == 2
+
+    with pytest.raises(ValidationError):
+        FooProtocol.Update(id=3)  # id is frozen
