@@ -94,7 +94,7 @@ def resolve_entities(
 
 
 @overload
-def select(entity: _TCCA[_T0]) -> AdaptedSelect[tuple[_T0]]: ...
+def select(entity0: _TCCA[_T0]) -> AdaptedSelect[tuple[_T0]]: ...
 @overload
 def select(
     entity0: _TCCA[_T0], entity1: _TCCA[_T1]
@@ -174,7 +174,7 @@ def select(
     entity9: _TCCA[_T9],
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]]: ...
 def select(  # pyright: ignore[reportInconsistentOverload]
-    *entities: type[BaseTransmuter | _InspectableTypeProtocol],
+    *entities: type[BaseTransmuter | _InspectableTypeProtocol | Any],
 ) -> AdaptedSelect[Any]:
     python_types, unwrapped_entities = zip(
         *(resolve_entities(entity) for entity in entities)

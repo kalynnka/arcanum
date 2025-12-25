@@ -39,15 +39,15 @@ M = TypeVar("M", bound="TransmuterMetaclass")
 class LoadedData: ...
 
 
-validated = ContextVar("validated", default={})
+validated: ContextVar[dict[Any, BaseTransmuter]] = ContextVar("validated", default={})
 
 
 @contextlib.contextmanager
 def validation_context():
-    token = validated.set({})
-
+    context: dict[Any, BaseTransmuter] = {}
+    token = validated.set(context)
     try:
-        yield
+        yield context
     finally:
         validated.reset(token)
 
@@ -262,11 +262,11 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     @classmethod
     def model_formulate(
         cls, data: Any, handler: ModelWrapValidatorHandler[Self]
-    ) -> Self:
+    ) -> BaseTransmuter:
         if isinstance(data, cls.__provider__):
             context = validated.get()
-            if cached := context.get(id(data)):
-                return cached
+            cached = context.get(data)
+
             inspector = inspect(data)
 
             # don't use a dict to hold loaded data here
@@ -287,10 +287,19 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
                     # hybrid attrs maybe
                     setattr(loaded, used_name, LoaderCallableStatus.NO_VALUE)
 
-            instance = handler(loaded)
-            instance.__provided__ = data
+            if cached:
+                instance = cached
+                # re-validate with loaded to avoid infinite validation here
+                instance.__pydantic_validator__.validate_python(
+                    loaded,
+                    self_instance=instance,
+                )
+                instance.__provided__ = data
+            else:
+                instance = handler(loaded)
+                instance.__provided__ = data
 
-            context[id(data)] = instance
+            context[data] = instance
         else:
             # normal initialization
             instance = handler(data)
@@ -311,4 +320,13 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         )
         for key, value in partial.items():
             setattr(self, key, value)
+        return self
+
+    def revalidate(self) -> Self:
+        """Re-validate the instance against the underlying provider instance."""
+        if self.__provided__:
+            self.__pydantic_validator__.validate_python(
+                self.__provided__,
+                self_instance=self,
+            )
         return self

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Optional, Self, TypeVar, overload
 
 from pydantic import TypeAdapter
 from sqlalchemy import Delete, Insert, Update, UpdateBase
-from sqlalchemy.sql._typing import _ColumnsClauseArgument, _DMLTableArgument
+from sqlalchemy.sql._typing import (
+    _ColumnExpressionArgument,
+    _ColumnsClauseArgument,
+    _DMLTableArgument,
+)
 from sqlalchemy.sql._typing import _TypedColumnClauseArgument as _TCCA
-from sqlalchemy.sql.dml import ValuesBase
+from sqlalchemy.sql.dml import DMLWhereBase, ValuesBase
 
 from arcanum.base import BaseTransmuter
+from arcanum.expression import Expression
 from arcanum.selectable import AdaptedReturnRows, get_cached_adapter, resolve_entities
 
 _TP = TypeVar("_TP", bound=tuple[Any, ...])
@@ -154,7 +159,20 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
 class AdaptedReturningInsert(AdaptedInsert, AdaptedReturnRows[_TP]): ...
 
 
-class AdaptedUpdate(Update, AdaptedUpdateBase):
+class AdaptedDMLWhereBase(DMLWhereBase):
+    def where(
+        self,
+        *whereclause: _ColumnExpressionArgument[bool] | Expression[Any],
+    ) -> Self:
+        return super().where(
+            *(
+                clause() if isinstance(clause, Expression) else clause
+                for clause in whereclause
+            )  # pyright: ignore[reportArgumentType]
+        )
+
+
+class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
     if TYPE_CHECKING:
 
         @overload
@@ -267,7 +285,7 @@ class AdaptedUpdate(Update, AdaptedUpdateBase):
 class AdaptedReturningUpdate(AdaptedUpdate, AdaptedReturnRows[_TP]): ...
 
 
-class AdaptedDelete(Delete, AdaptedUpdateBase):
+class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
     if TYPE_CHECKING:
 
         @overload
