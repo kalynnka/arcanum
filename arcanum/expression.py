@@ -97,14 +97,16 @@ class ExpressionProtocol(Protocol):
 
 class Expression(Generic[T]):
     inner: Union[
-        InstrumentedAttribute,
-        BinaryExpression,
+        InstrumentedAttribute[Any],
+        BinaryExpression[bool],
     ]
 
-    def __call__(self):
+    def __call__(self) -> Union[InstrumentedAttribute[Any], BinaryExpression[bool]]:
         return self.inner
 
-    def __init__(self, inner):
+    def __init__(
+        self, inner: Union[InstrumentedAttribute[Any], BinaryExpression[bool]]
+    ):
         self.inner = inner
 
     def __lt__(self, other: T) -> Expression[T]:
@@ -179,7 +181,7 @@ class Expression(Generic[T]):
 class Column(Expression[T]):
     __args__: tuple[T, ...]
 
-    inner: InstrumentedAttribute
+    inner: InstrumentedAttribute[Any]
     owner: type[BaseTransmuter]
 
     field_name: str
@@ -193,6 +195,9 @@ class Column(Expression[T]):
         self.info = info
 
         super().__init__(inner=getattr(self.owner.__provider__, self.used_name))
+
+    def __call__(self) -> InstrumentedAttribute[Any]:
+        return self.inner
 
     def asc(self) -> Self:
         self.inner = self.inner.asc()

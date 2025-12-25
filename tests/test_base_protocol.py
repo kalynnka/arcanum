@@ -43,7 +43,7 @@ def test_column_expression(engine: Engine, foo_with_bar: Foo):
 
 def test_adapted_select(engine: Engine, foo_with_bar: Foo):
     with Session(engine) as session:
-        stmt = select(Foo, Foo.name).where(Foo["id"] == foo_with_bar.id)
+        stmt = select(Foo, Foo["name"]).where(Foo["id"] == foo_with_bar.id)
         result = session.execute(stmt)
         row = result.fetchone()
         assert row
