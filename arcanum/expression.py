@@ -8,10 +8,13 @@ from typing import (
     Protocol,
     Self,
     TypeVar,
+    Union,
     overload,
 )
 
 from pydantic.fields import FieldInfo
+from sqlalchemy import BinaryExpression
+from sqlalchemy.orm import InstrumentedAttribute
 
 if TYPE_CHECKING:
     from arcanum.base import BaseTransmuter
@@ -39,12 +42,12 @@ def not_in(column: Column[T], value: Iterable[T]) -> Expression[T]:
     return column.not_in(value)
 
 
-def starts_with(column: Column[T], value: str) -> Expression[T]:
-    return column.starts_with(value)
+def startswith(column: Column[T], value: str) -> Expression[T]:
+    return column.startswith(value)
 
 
-def ends_with(column: Column[T], value: str) -> Expression[T]:
-    return column.ends_with(value)
+def endswith(column: Column[T], value: str) -> Expression[T]:
+    return column.endswith(value)
 
 
 @overload
@@ -85,15 +88,18 @@ class ExpressionProtocol(Protocol):
     def in_(self, other: Iterable) -> Self: ...
     def not_in(self, other: Iterable) -> Self: ...
 
-    def starts_with(self, other: str) -> Self: ...
-    def ends_with(self, other: str) -> Self: ...
+    def startswith(self, other: str) -> Self: ...
+    def endswith(self, other: str) -> Self: ...
 
     def asc(self) -> Self: ...
     def desc(self) -> Self: ...
 
 
 class Expression(Generic[T]):
-    inner: ExpressionProtocol
+    inner: Union[
+        InstrumentedAttribute,
+        BinaryExpression,
+    ]
 
     def __call__(self):
         return self.inner
@@ -161,18 +167,19 @@ class Expression(Generic[T]):
         self.inner = self.inner.not_in(unwarp(other))
         return self
 
-    def starts_with(self, other: str) -> Expression[T]:
-        self.inner = self.inner.starts_with(other)
+    def startswith(self, other: str) -> Expression[T]:
+        self.inner = self.inner.startswith(other)
         return self
 
-    def ends_with(self, other: str) -> Expression[T]:
-        self.inner = self.inner.ends_with(other)
+    def endswith(self, other: str) -> Expression[T]:
+        self.inner = self.inner.endswith(other)
         return self
 
 
 class Column(Expression[T]):
     __args__: tuple[T, ...]
 
+    inner: InstrumentedAttribute
     owner: type[BaseTransmuter]
 
     field_name: str
