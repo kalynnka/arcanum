@@ -11,12 +11,13 @@ from tests.schemas import Bar, Foo
 
 def test_bless_foo_into_protocol(foo_with_bar: Foo, engine: Engine):
     with Session(engine) as session:
-        foo = session.get(Foo, foo_with_bar.id)
+        foo = session.get_one(Foo, foo_with_bar.id)
 
-        assert foo is not None
         assert foo.id == foo_with_bar.id
         assert foo.name == foo_with_bar.name
         assert isinstance(foo.__provided__, FooModel)
+
+        foo.revalidate()
 
         assert len(foo.bars) == 2
         assert isinstance(foo.bars[0], Bar)
@@ -83,9 +84,9 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
         stmt = update(Foo).where(Foo["id"] == foo_id).values(name="Updated Foo")
         session.execute(stmt)
 
-        updated = session.get(Foo, foo_id)
-        assert updated
-        assert updated.name == "Updated Foo"
+        updated1 = session.get(Foo, foo_id)
+        assert updated1
+        assert updated1.name == "Updated Foo"
 
         # update with returning
         stmt = (
@@ -95,11 +96,53 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
             .returning(Foo)
         )
         result = session.execute(stmt)
-        updated_foo = result.scalars().one()
+        updated2 = result.scalars().one()
 
-        assert isinstance(updated_foo, Foo)
-        assert updated_foo.id == foo_id
-        assert updated_foo.name == "Updated Foo With Returning"
+        # TODO: We need an manual refresh/revalidate operation here to keep the transmuter object sync with the orm
+        # as the same foo orm object is loaded earlier within the same session and kept in session's identity map,
+        # Sqlalchemy's synchronization will update the orm state with an update/insert statement
+        # while we lack of a mecanisum (or not that proper) to notify the transmuter object to revalidate automatically
+        # see https://docs.sqlalchemy.org/en/20/orm/queryguide/dml.html#selecting-a-synchronization-strategy
+        # currently the candidates would be
+        # 1. the 'refresh' mapper event, but not that ideal for it is registered on mapper class not instance.
+        # 2. try to trigger the revalidate on update/insert statement execution if the statement execution option have synchronize_session is not False
+        updated2.revalidate()
+
+        assert isinstance(updated2, Foo)
+        assert updated1 is updated2
+        assert updated1.__provided__ is updated2.__provided__
+        assert updated1.name == updated2.name == "Updated Foo With Returning"
+
+        # example of synchronize_session=False
+        stmt = (
+            update(Foo)
+            .where(Foo["id"] == foo_id)
+            .values(name="Updated Foo With Returning Again")
+            .execution_options(synchronize_session=False)
+            .returning(Foo)
+        )
+        result = session.execute(stmt)
+        updated3 = result.scalars().one()
+
+        assert updated1 is updated2 is updated3
+        assert updated1.__provided__ is updated2.__provided__ is updated3.__provided__
+        assert (
+            updated1.__provided__.name
+            == updated2.__provided__.name
+            == updated3.__provided__.name
+            == "Updated Foo With Returning"
+        )
+
+        session.refresh(updated3)
+
+        assert updated1 is updated2 is updated3
+        assert updated1.__provided__ is updated2.__provided__ is updated3.__provided__
+        assert (
+            updated1.__provided__.name
+            == updated2.__provided__.name
+            == updated3.__provided__.name
+            == "Updated Foo With Returning Again"
+        )
 
 
 def test_adapted_delete(engine: Engine, foo_with_bar: Foo):
@@ -108,11 +151,10 @@ def test_adapted_delete(engine: Engine, foo_with_bar: Foo):
         new_foo = Foo(name="To Be Deleted")
         session.add(new_foo)
         session.flush()
-        # TODO: we must refresh/re-validate here to sync the returned identity keys from orm to transmuter object
-        session.refresh(new_foo)
-
-        # Or
-        # new_foo.revalidate()
+        # TODO: we must revalidate here to sync the returned identity keys from orm to transmuter object
+        # revalidate won't issue an additional select statement as the identity keys are be already returned by sqlalchemy (with dialects that support returning)
+        # except for Mysql :xd, in that case do session.refresh(new_foo)
+        new_foo.revalidate()
 
         # delete with returning
         stmt = delete(Foo).where(Foo["id"] == new_foo.id).returning(Foo)

@@ -44,6 +44,8 @@ from arcanum.expression import Column, Expression
 from arcanum.utils import get_cached_adapter
 
 if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
+
     from arcanum.base import BaseTransmuter
     from arcanum.database import Session
 
@@ -65,7 +67,7 @@ def is_association(t: type) -> bool:
 
     # Literal types, e.g. Literal["value1", "value2"]
     if origin is Literal:
-        arg = type(get_args(t)[0])  # type: ignore
+        arg = type(get_args(t)[0])
 
     return issubclass(arg, Association)
 
@@ -299,8 +301,8 @@ class Relation(Association[Optional_T]):
 
     @property
     @ensure_loaded
-    def value(self) -> Optional_T:
-        return self.__payloads__  # type: ignore
+    def value(self) -> Optional_T | None:
+        return self.__payloads__
 
     @value.setter
     @ensure_loaded
@@ -402,17 +404,20 @@ class RelationCollection(list[T], Association[T]):
             self: RelationCollection[T], *args: P.args, **kwargs: P.kwargs
         ) -> R:
             self._load()
-
             return func(self, *args, **kwargs)
 
         return wrapper
 
     def _load(self):
-        # maybe during deepcopy from field default, or the relationship is already loaded
-        if not self.__instance__ or self.__loaded__:
+        # maybe during deepcopy from field default
+        if not self.__instance__:
             return
 
-        if len(self.__provided__) != super().__len__():
+        # or the relationship is already loaded
+        if self.__loaded__:
+            return
+
+        if not len(self.__provided__) == super().__len__():
             # If the length of __provided__ is not equal to the length of self,
             # it means some items were not blessed into pydantic objects.
             super().clear()
@@ -453,18 +458,18 @@ class RelationCollection(list[T], Association[T]):
     @overload
     def __setitem__(self, key: slice, value: Iterable[T]) -> None: ...
     @ensure_loaded
-    def __setitem__(self, key: SupportsIndex | slice, value: T | Iterable[T]):
+    def __setitem__(self, key: slice, value: T | Iterable[T]):
         if isinstance(value, Iterable):
             items = self.validate_python(value)
             self.__provided__[key] = [item.__provided__ for item in items]
-            super().__setitem__(key, items)  # type: ignore
+            super().__setitem__(key, items)
         else:
             item = self.validate_python(value)
             self.__provided__[key] = item.__provided__
             super().__setitem__(key, item)
 
     @ensure_loaded
-    def __delitem__(self, key: SupportsIndex | slice):
+    def __delitem__(self, key: slice):
         del self.__provided__[key]
         super().__delitem__(key)
 
@@ -531,7 +536,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def append(self, object: T):
-        object = self.validate_python(object)  # type: ignore
+        object = self.validate_python(object)
         self.__provided__.append(
             object.__provided__ if hasattr(object, "__provided__") else object
         )
@@ -569,7 +574,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def insert(self, index: SupportsIndex, object: T):
-        object = self.validate_python(object)  # type: ignore
+        object = self.validate_python(object)
         self.__provided__.insert(index, object.__provided__)
         super().insert(index, object)
 
@@ -581,7 +586,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def remove(self, value: T):
-        item: T = self.validate_python(value)  # type: ignore
+        item: T = self.validate_python(value)
         self.__provided__.remove(item.__provided__)
         super().remove(value)
 
@@ -590,8 +595,13 @@ class RelationCollection(list[T], Association[T]):
         super().reverse()
 
     @ensure_loaded
-    def sort(self, *, key: Callable[[T], Any] | None = None, reverse: bool = False):
-        super().sort(key=key, reverse=reverse)  # type: ignore
+    def sort(
+        self,
+        *,
+        key: Callable[[T], SupportsRichComparison],
+        reverse: bool = False,
+    ):
+        super().sort(key=key, reverse=reverse)
 
 
 class PassiveRelationCollection(RelationCollection[T]):

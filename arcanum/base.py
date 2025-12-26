@@ -226,6 +226,8 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     __provider__: ClassVar[type[Any]]
     __provided__: Any = NoInitField(init=False)
 
+    _provider_revalidating: bool = PrivateAttr(default=False)
+
     model_config = ConfigDict(from_attributes=True)
 
     def __getattribute__(self, name: str) -> Any:
@@ -265,7 +267,10 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     ) -> BaseTransmuter:
         if isinstance(data, cls.__provider__):
             context = validated.get()
-            cached = context.get(data)
+            if cached := context.get(data):
+                # if the cached instance is in revalidating state, let it through to sync orm state
+                if not cached._provider_revalidating:
+                    return cached
 
             inspector = inspect(data)
 
@@ -287,19 +292,11 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
                     # hybrid attrs maybe
                     setattr(loaded, used_name, LoaderCallableStatus.NO_VALUE)
 
-            if cached:
-                instance = cached
-                # re-validate with loaded to avoid infinite validation here
-                instance.__pydantic_validator__.validate_python(
-                    loaded,
-                    self_instance=instance,
-                )
-                instance.__provided__ = data
-            else:
-                instance = handler(loaded)
-                instance.__provided__ = data
+            instance = handler(loaded)
+            instance.__provided__ = data
 
-            context[data] = instance
+            if not cached:
+                context[data] = instance
         else:
             # normal initialization
             instance = handler(data)
@@ -324,9 +321,18 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     def revalidate(self) -> Self:
         """Re-validate the instance against the underlying provider instance."""
+        # if True, it means that the revalidation is already in progress and triggered by an upper validation round,
+        # so we skip the revalidation here to avoid infinite recursion.
+        if self._provider_revalidating:
+            return self
+
+        self._provider_revalidating = True
+
         if self.__provided__:
             self.__pydantic_validator__.validate_python(
                 self.__provided__,
                 self_instance=self,
             )
+        # double ensure the revalidation flag is reset to False
+        self._provider_revalidating = False
         return self

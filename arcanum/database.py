@@ -1,3 +1,4 @@
+from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Sequence, TypeVar, overload
 
 from sqlalchemy import (
@@ -34,6 +35,9 @@ ExpressionType = _ColumnExpressionArgument[bool] | Expression[Any]
 
 
 class Session(SqlalchemySession):
+    _validation_context: dict[Any, BaseTransmuter] | None
+    _validation_context_manager: _GeneratorContextManager[dict[Any, BaseTransmuter]]
+
     def __enter__(self):
         self._validation_context_manager = validation_context()
         self._validation_context = self._validation_context_manager.__enter__()
@@ -366,6 +370,14 @@ class Session(SqlalchemySession):
             )
         return result
 
+    def add(self, instance: object, _warn: bool = True) -> None:
+        super().add(instance, _warn)
+        if (
+            isinstance(instance, BaseTransmuter)
+            and self._validation_context is not None
+        ):
+            self._validation_context[instance.__provided__] = instance
+
     def refresh(
         self,
         instance: object,
@@ -374,10 +386,7 @@ class Session(SqlalchemySession):
     ) -> None:
         super().refresh(instance, attribute_names, with_for_update)
         if isinstance(instance, BaseTransmuter):
-            instance.__pydantic_validator__.validate_python(
-                instance.__provided__,
-                self_instance=instance,
-            )
+            instance.revalidate()
 
     def merge(
         self,
