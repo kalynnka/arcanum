@@ -13,6 +13,7 @@ from sqlalchemy.sql._typing import _TypedColumnClauseArgument as _TCCA
 from sqlalchemy.sql.dml import DMLWhereBase, ValuesBase
 
 from arcanum.base import BaseTransmuter
+from arcanum.expression import Column as ArcanumColumn
 from arcanum.expression import Expression
 from arcanum.selectable import AdaptedReturnRows, get_cached_adapter, resolve_entities
 
@@ -53,14 +54,17 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
 
         @overload
         def returning(
-            self, __ent0: _TCCA[_T0], *, sort_by_parameter_order: bool = False
+            self,
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            *,
+            sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0]]: ...
 
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0, _T1]]: ...
@@ -68,9 +72,9 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0, _T1, _T2]]: ...
@@ -78,10 +82,10 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0, _T1, _T2, _T3]]: ...
@@ -89,11 +93,11 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0, _T1, _T2, _T3, _T4]]: ...
@@ -101,12 +105,12 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0, _T1, _T2, _T3, _T4, _T5]]: ...
@@ -114,13 +118,13 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
-            __ent6: _TCCA[_T6],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
+            __ent6: _TCCA[_T6] | ArcanumColumn[_T6],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6]]: ...
@@ -128,14 +132,14 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
-            __ent6: _TCCA[_T6],
-            __ent7: _TCCA[_T7],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
+            __ent6: _TCCA[_T6] | ArcanumColumn[_T6],
+            __ent7: _TCCA[_T7] | ArcanumColumn[_T7],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningInsert[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]]: ...
@@ -152,7 +156,7 @@ class AdaptedInsert(Insert, AdaptedUpdateBase):
 
         def returning(
             self,
-            *cols: _ColumnsClauseArgument[Any],
+            *cols: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
             sort_by_parameter_order: bool = False,
             **__kw: Any,
         ) -> AdaptedReturningInsert[Any]: ...
@@ -181,14 +185,17 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
 
         @overload
         def returning(
-            self, __ent0: _TCCA[_T0], *, sort_by_parameter_order: bool = False
+            self,
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            *,
+            sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0]]: ...
 
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0, _T1]]: ...
@@ -196,9 +203,9 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0, _T1, _T2]]: ...
@@ -206,10 +213,10 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0, _T1, _T2, _T3]]: ...
@@ -217,11 +224,11 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0, _T1, _T2, _T3, _T4]]: ...
@@ -229,12 +236,12 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0, _T1, _T2, _T3, _T4, _T5]]: ...
@@ -242,13 +249,13 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
-            __ent6: _TCCA[_T6],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
+            __ent6: _TCCA[_T6] | ArcanumColumn[_T6],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6]]: ...
@@ -256,14 +263,14 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
-            __ent6: _TCCA[_T6],
-            __ent7: _TCCA[_T7],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
+            __ent6: _TCCA[_T6] | ArcanumColumn[_T6],
+            __ent7: _TCCA[_T7] | ArcanumColumn[_T7],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningUpdate[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]]: ...
@@ -280,7 +287,7 @@ class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
 
         def returning(
             self,
-            *cols: _ColumnsClauseArgument[Any],
+            *cols: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
             sort_by_parameter_order: bool = False,
             **__kw: Any,
         ) -> AdaptedReturningUpdate[Any]: ...
@@ -296,14 +303,17 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
 
         @overload
         def returning(
-            self, __ent0: _TCCA[_T0], *, sort_by_parameter_order: bool = False
+            self,
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            *,
+            sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0]]: ...
 
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0, _T1]]: ...
@@ -311,9 +321,9 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0, _T1, _T2]]: ...
@@ -321,10 +331,10 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0, _T1, _T2, _T3]]: ...
@@ -332,11 +342,11 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0, _T1, _T2, _T3, _T4]]: ...
@@ -344,12 +354,12 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0, _T1, _T2, _T3, _T4, _T5]]: ...
@@ -357,13 +367,13 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
-            __ent6: _TCCA[_T6],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
+            __ent6: _TCCA[_T6] | ArcanumColumn[_T6],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6]]: ...
@@ -371,14 +381,14 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
         @overload
         def returning(
             self,
-            __ent0: _TCCA[_T0],
-            __ent1: _TCCA[_T1],
-            __ent2: _TCCA[_T2],
-            __ent3: _TCCA[_T3],
-            __ent4: _TCCA[_T4],
-            __ent5: _TCCA[_T5],
-            __ent6: _TCCA[_T6],
-            __ent7: _TCCA[_T7],
+            __ent0: _TCCA[_T0] | ArcanumColumn[_T0],
+            __ent1: _TCCA[_T1] | ArcanumColumn[_T1],
+            __ent2: _TCCA[_T2] | ArcanumColumn[_T2],
+            __ent3: _TCCA[_T3] | ArcanumColumn[_T3],
+            __ent4: _TCCA[_T4] | ArcanumColumn[_T4],
+            __ent5: _TCCA[_T5] | ArcanumColumn[_T5],
+            __ent6: _TCCA[_T6] | ArcanumColumn[_T6],
+            __ent7: _TCCA[_T7] | ArcanumColumn[_T7],
             *,
             sort_by_parameter_order: bool = False,
         ) -> AdaptedReturningDelete[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]]: ...
@@ -395,7 +405,7 @@ class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
 
         def returning(
             self,
-            *cols: _ColumnsClauseArgument[Any],
+            *cols: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
             sort_by_parameter_order: bool = False,
             **__kw: Any,
         ) -> AdaptedReturningDelete[Any]: ...

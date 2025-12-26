@@ -15,7 +15,6 @@ from sqlalchemy import (
     Insert,
     Update,
 )
-from sqlalchemy.inspection import _InspectableTypeProtocol
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import Select
 from sqlalchemy.sql._typing import (
@@ -103,16 +102,21 @@ def resolve_entities(
 
 
 @overload
-def select(entity0: _TCCA[_T0] | ArcanumColumn[_T0]) -> AdaptedSelect[tuple[_T0]]: ...
+def select(
+    entity0: _TCCA[_T0] | ArcanumColumn[_T0], /
+) -> AdaptedSelect[tuple[_T0]]: ...
 @overload
 def select(
-    entity0: _TCCA[_T0] | ArcanumColumn[_T0], entity1: _TCCA[_T1] | ArcanumColumn[_T1]
+    entity0: _TCCA[_T0] | ArcanumColumn[_T0],
+    entity1: _TCCA[_T1] | ArcanumColumn[_T1],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1]]: ...
 @overload
 def select(
     entity0: _TCCA[_T0] | ArcanumColumn[_T0],
     entity1: _TCCA[_T1] | ArcanumColumn[_T1],
     entity2: _TCCA[_T2] | ArcanumColumn[_T2],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2]]: ...
 @overload
 def select(
@@ -120,6 +124,7 @@ def select(
     entity1: _TCCA[_T1] | ArcanumColumn[_T1],
     entity2: _TCCA[_T2] | ArcanumColumn[_T2],
     entity3: _TCCA[_T3] | ArcanumColumn[_T3],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3]]: ...
 @overload
 def select(
@@ -128,6 +133,7 @@ def select(
     entity2: _TCCA[_T2] | ArcanumColumn[_T2],
     entity3: _TCCA[_T3] | ArcanumColumn[_T3],
     entity4: _TCCA[_T4] | ArcanumColumn[_T4],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4]]: ...
 @overload
 def select(
@@ -137,6 +143,7 @@ def select(
     entity3: _TCCA[_T3] | ArcanumColumn[_T3],
     entity4: _TCCA[_T4] | ArcanumColumn[_T4],
     entity5: _TCCA[_T5] | ArcanumColumn[_T5],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5]]: ...
 @overload
 def select(
@@ -147,6 +154,7 @@ def select(
     entity4: _TCCA[_T4] | ArcanumColumn[_T4],
     entity5: _TCCA[_T5] | ArcanumColumn[_T5],
     entity6: _TCCA[_T6] | ArcanumColumn[_T6],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6]]: ...
 @overload
 def select(
@@ -158,6 +166,7 @@ def select(
     entity5: _TCCA[_T5] | ArcanumColumn[_T5],
     entity6: _TCCA[_T6] | ArcanumColumn[_T6],
     entity7: _TCCA[_T7] | ArcanumColumn[_T7],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]]: ...
 @overload
 def select(
@@ -170,6 +179,7 @@ def select(
     entity6: _TCCA[_T6] | ArcanumColumn[_T6],
     entity7: _TCCA[_T7] | ArcanumColumn[_T7],
     entity8: _TCCA[_T8] | ArcanumColumn[_T8],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]]: ...
 @overload
 def select(
@@ -183,10 +193,19 @@ def select(
     entity7: _TCCA[_T7] | ArcanumColumn[_T7],
     entity8: _TCCA[_T8] | ArcanumColumn[_T8],
     entity9: _TCCA[_T9] | ArcanumColumn[_T9],
+    /,
 ) -> AdaptedSelect[tuple[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]]: ...
-def select(  # pyright: ignore[reportInconsistentOverload]
-    *entities: type[BaseTransmuter | _InspectableTypeProtocol | Any]
-    | ArcanumColumn[Any],
+
+
+# END OVERLOADED FUNCTIONS select
+
+
+@overload
+def select(
+    *entities: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
+) -> AdaptedSelect[Any]: ...
+def select(
+    *entities: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
 ) -> AdaptedSelect[Any]:
     # TODO: maybe useful
     # https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#inspecting-entities-and-columns-from-orm-enabled-select-and-dml-statements
