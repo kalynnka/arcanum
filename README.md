@@ -1,4 +1,4 @@
-# arcanum
+# Arcanum
 
 **arcanum** is a Python library designed to seamlessly bind Pydantic schemas with various datasources, eliminating the need to manually create templates, factories, and utilities repeatedly. It provides a unified interface for working with different data backends while maintaining type safety and validation through Pydantic.
 

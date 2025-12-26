@@ -2,9 +2,7 @@ from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Sequence, TypeVar, overload
 
 from sqlalchemy import (
-    Connection,
     CursorResult,
-    Engine,
     Executable,
     Result,
     ScalarResult,
@@ -19,7 +17,7 @@ from sqlalchemy.orm import Session as SqlalchemySession
 from sqlalchemy.orm._typing import OrmExecuteOptionsParameter
 from sqlalchemy.orm.interfaces import ORMOption
 from sqlalchemy.orm.session import _BindArguments, _PKIdentityArgument
-from sqlalchemy.sql import ClauseElement, functions
+from sqlalchemy.sql import functions
 from sqlalchemy.sql._typing import (
     _ColumnExpressionArgument,
     _ColumnExpressionOrStrLabelArgument,
@@ -254,21 +252,6 @@ class Session(SqlalchemySession):
         if self._validation_context:
             self._validation_context[obj.__provided__] = obj
 
-    def get_bind(
-        self,
-        mapper: BaseTransmuter | None = None,
-        *,
-        clause: ClauseElement | None = None,
-        bind: Engine | Connection | None = None,
-        **kw: Any,
-    ) -> Engine | Connection:
-        return super().get_bind(
-            mapper.__provided__ if mapper else None,
-            clause=clause,
-            bind=bind,
-            **kw,
-        )
-
     def get(
         self,
         entity: type[T],
@@ -282,7 +265,7 @@ class Session(SqlalchemySession):
         bind_arguments: Optional[_BindArguments] = None,
     ) -> Optional[T]:
         instance = super().get(
-            entity,
+            entity.__provider__,
             ident,
             options=options,
             populate_existing=populate_existing,
