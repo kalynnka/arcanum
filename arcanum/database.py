@@ -158,19 +158,12 @@ class Session(SqlalchemySession):
         bind_arguments: Optional[_BindArguments] = None,
         **kw: Any,
     ) -> Any:
-        """Execute a statement and return a scalar result.
-
-        Usage and parameters are the same as that of
-        :meth:`_orm.Session.execute`; the return result is a scalar Python
-        value.
-
-        """
-
         return self.execute(
             statement=statement,
             params=params,
             execution_options=execution_options,
             bind_arguments=bind_arguments,
+            **kw,
         ).scalar()
 
     @overload
@@ -218,6 +211,7 @@ class Session(SqlalchemySession):
             params=params,
             execution_options=execution_options,
             bind_arguments=bind_arguments,
+            **kw,
         ).scalars()
 
     def expunge(self, instance: BaseTransmuter) -> None:

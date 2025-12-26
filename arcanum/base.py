@@ -327,7 +327,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             return self
 
         self._provider_revalidating = True
-
         if self.__provided__:
             self.__pydantic_validator__.validate_python(
                 self.__provided__,
@@ -335,4 +334,5 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             )
         # double ensure the revalidation flag is reset to False
         self._provider_revalidating = False
+
         return self

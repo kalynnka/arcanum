@@ -186,6 +186,8 @@ def select(  # pyright: ignore[reportInconsistentOverload]
     *entities: type[BaseTransmuter | _InspectableTypeProtocol | Any]
     | ArcanumColumn[Any],
 ) -> AdaptedSelect[Any]:
+    # TODO: maybe useful
+    # https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#inspecting-entities-and-columns-from-orm-enabled-select-and-dml-statements
     python_types, unwrapped_entities = zip(
         *(resolve_entities(entity) for entity in entities)
     )

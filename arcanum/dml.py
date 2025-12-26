@@ -405,6 +405,8 @@ def resolve_transmuter(table: _DMLTableArgument) -> _DMLTableArgument:
         return table
 
 
+# TODO: maybe useful
+# https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#inspecting-entities-and-columns-from-orm-enabled-select-and-dml-statements
 def insert(table: _DMLTableArgument) -> AdaptedInsert:
     """Create an INSERT statement for the given table.
 
