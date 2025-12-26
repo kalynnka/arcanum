@@ -25,7 +25,6 @@ from pydantic import (
 from pydantic._internal._generics import PydanticGenericMetadata
 from pydantic._internal._model_construction import ModelMetaclass, NoInitField
 from pydantic.fields import Field, FieldInfo, PrivateAttr
-from pydantic_core.core_schema import model_field
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import LoaderCallableStatus
 
@@ -70,7 +69,7 @@ class TransmuterMetaclass(ModelMetaclass):
         __transmuter_update_model__: Optional[type[BaseModel]]
 
         model_config: ConfigDict
-        model_fields: dict[str, model_field.ModelField]
+        model_fields: dict[str, FieldInfo]
 
     def __new__(
         mcs,
