@@ -2,21 +2,24 @@ from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Sequence, TypeVar, overload
 
 from sqlalchemy import (
+    Connection,
     CursorResult,
+    Engine,
     Executable,
     Result,
+    ScalarResult,
     UpdateBase,
     exc,
     inspect,
     tuple_,
     util,
 )
-from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams
+from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
 from sqlalchemy.orm import Session as SqlalchemySession
 from sqlalchemy.orm._typing import OrmExecuteOptionsParameter
 from sqlalchemy.orm.interfaces import ORMOption
 from sqlalchemy.orm.session import _BindArguments, _PKIdentityArgument
-from sqlalchemy.sql import functions
+from sqlalchemy.sql import ClauseElement, functions
 from sqlalchemy.sql._typing import (
     _ColumnExpressionArgument,
     _ColumnExpressionOrStrLabelArgument,
@@ -26,7 +29,7 @@ from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedRet
 
 from arcanum.base import BaseTransmuter, validation_context
 from arcanum.expression import Expression
-from arcanum.result import _T, _TP, AdaptedResult
+from arcanum.result import _T, _TP, AdaptedResult, AdaptedScalarResult
 from arcanum.selectable import AdaptedProtocol, AdaptedReturnRows, select
 
 T = TypeVar("T", bound=BaseTransmuter)
@@ -48,6 +51,230 @@ class Session(SqlalchemySession):
         self._validation_context = None
         return super().__exit__(exc_type, exc_value, traceback)
 
+    def __iter__(self) -> Iterable[BaseTransmuter]:
+        if not self._validation_context:
+            raise RuntimeError(
+                "Active validation context is requried, please use a context manager 'with Session() as session' to create a session context."
+            )
+        return [self._validation_context[item] for item in super().__iter__()]
+
+    @overload
+    def execute(
+        self,
+        statement: AdaptedReturnRows[_TP],
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        _parent_execute_state: Optional[Any] = None,
+        _add_event: Optional[Any] = None,
+    ) -> AdaptedResult[_TP]: ...
+    @overload
+    def execute(
+        self,
+        statement: TypedReturnsRows[_T],
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        _parent_execute_state: Optional[Any] = None,
+        _add_event: Optional[Any] = None,
+    ) -> Result[_T]: ...
+
+    @overload
+    def execute(
+        self,
+        statement: UpdateBase,
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        _parent_execute_state: Optional[Any] = None,
+        _add_event: Optional[Any] = None,
+    ) -> CursorResult[Any]: ...
+    @overload
+    def execute(
+        self,
+        statement: Executable,
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        _parent_execute_state: Optional[Any] = None,
+        _add_event: Optional[Any] = None,
+    ) -> Result[Any]: ...
+    def execute(
+        self,
+        statement: Executable,
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        _parent_execute_state: Optional[Any] = None,
+        _add_event: Optional[Any] = None,
+    ) -> Result[Any] | AdaptedResult[Any]:
+        result = super().execute(
+            statement,
+            params,
+            execution_options=execution_options,
+            bind_arguments=bind_arguments,
+            _parent_execute_state=_parent_execute_state,
+            _add_event=_add_event,
+        )
+        if isinstance(statement, AdaptedProtocol):
+            return AdaptedResult(
+                real_result=result,
+                adapter=statement.adapter,
+                scalar_adapter=statement.scalar_adapter,
+            )
+        return result
+
+    @overload
+    def scalar(
+        self,
+        statement: TypedReturnsRows[tuple[_T]],
+        params: Optional[_CoreSingleExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        **kw: Any,
+    ) -> Optional[_T]: ...
+    @overload
+    def scalar(
+        self,
+        statement: Executable,
+        params: Optional[_CoreSingleExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        **kw: Any,
+    ) -> Any: ...
+    def scalar(
+        self,
+        statement: Executable,
+        params: Optional[_CoreSingleExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        **kw: Any,
+    ) -> Any:
+        """Execute a statement and return a scalar result.
+
+        Usage and parameters are the same as that of
+        :meth:`_orm.Session.execute`; the return result is a scalar Python
+        value.
+
+        """
+
+        return self.execute(
+            statement=statement,
+            params=params,
+            execution_options=execution_options,
+            bind_arguments=bind_arguments,
+        ).scalar()
+
+    @overload
+    def scalars(
+        self,
+        statement: AdaptedReturnRows[tuple[_T]],
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        **kw: Any,
+    ) -> AdaptedScalarResult[_T]: ...
+    @overload
+    def scalars(
+        self,
+        statement: TypedReturnsRows[tuple[_T]],
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        **kw: Any,
+    ) -> ScalarResult[_T]: ...
+
+    @overload
+    def scalars(
+        self,
+        statement: Executable,
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        **kw: Any,
+    ) -> ScalarResult[Any]: ...
+    def scalars(
+        self,
+        statement: Executable,
+        params: Optional[_CoreAnyExecuteParams] = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+        **kw: Any,
+    ) -> ScalarResult[Any]:
+        return self.execute(
+            statement=statement,
+            params=params,
+            execution_options=execution_options,
+            bind_arguments=bind_arguments,
+        ).scalars()
+
+    def expunge(self, instance: BaseTransmuter) -> None:
+        if self._validation_context:
+            if instance.__provided__ in self._validation_context:
+                del self._validation_context[instance.__provided__]
+        super().expunge(instance.__provided__)
+
+    def expunge_all(self) -> None:
+        if self._validation_context:
+            self._validation_context.clear()
+        return super().expunge_all()
+
+    def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
+        super().add(instance, _warn)
+        if self._validation_context:
+            self._validation_context[instance.__provided__] = instance
+
+    def refresh(
+        self,
+        instance: BaseTransmuter,
+        attribute_names: Iterable[str] | None = None,
+        with_for_update: ForUpdateArg | None | bool | dict[str, Any] = None,
+    ) -> None:
+        super().refresh(instance, attribute_names, with_for_update)
+        instance.revalidate()
+
+    def merge(
+        self,
+        instance: T,
+        *,
+        load: bool = True,
+        options: Sequence[ORMOption] | None = None,
+    ) -> T:
+        super().merge(instance, load=load, options=options)
+        return instance.revalidate()
+
+    def enable_relationship_loading(self, obj: BaseTransmuter) -> None:
+        super().enable_relationship_loading(obj.__provided__)
+        if self._validation_context:
+            self._validation_context[obj.__provided__] = obj
+
+    def get_bind(
+        self,
+        mapper: BaseTransmuter | None = None,
+        *,
+        clause: ClauseElement | None = None,
+        bind: Engine | Connection | None = None,
+        **kw: Any,
+    ) -> Engine | Connection:
+        return super().get_bind(
+            mapper.__provided__ if mapper else None,
+            clause=clause,
+            bind=bind,
+            **kw,
+        )
+
     def get(
         self,
         entity: type[T],
@@ -61,7 +288,7 @@ class Session(SqlalchemySession):
         bind_arguments: Optional[_BindArguments] = None,
     ) -> Optional[T]:
         instance = super().get(
-            entity.__provider__,
+            entity,
             ident,
             options=options,
             populate_existing=populate_existing,
@@ -298,106 +525,3 @@ class Session(SqlalchemySession):
             statement = statement.filter_by(**filters)
 
         yield from self.execute(statement).scalars().partitions(size)
-
-    @overload
-    def execute(
-        self,
-        statement: AdaptedReturnRows[_TP],
-        params: Optional[_CoreAnyExecuteParams] = None,
-        *,
-        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-        bind_arguments: Optional[_BindArguments] = None,
-        _parent_execute_state: Optional[Any] = None,
-        _add_event: Optional[Any] = None,
-    ) -> AdaptedResult[_TP]: ...
-    @overload
-    def execute(
-        self,
-        statement: TypedReturnsRows[_T],
-        params: Optional[_CoreAnyExecuteParams] = None,
-        *,
-        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-        bind_arguments: Optional[_BindArguments] = None,
-        _parent_execute_state: Optional[Any] = None,
-        _add_event: Optional[Any] = None,
-    ) -> Result[_T]: ...
-
-    @overload
-    def execute(
-        self,
-        statement: UpdateBase,
-        params: Optional[_CoreAnyExecuteParams] = None,
-        *,
-        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-        bind_arguments: Optional[_BindArguments] = None,
-        _parent_execute_state: Optional[Any] = None,
-        _add_event: Optional[Any] = None,
-    ) -> CursorResult[Any]: ...
-    @overload
-    def execute(
-        self,
-        statement: Executable,
-        params: Optional[_CoreAnyExecuteParams] = None,
-        *,
-        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-        bind_arguments: Optional[_BindArguments] = None,
-        _parent_execute_state: Optional[Any] = None,
-        _add_event: Optional[Any] = None,
-    ) -> Result[Any]: ...
-    def execute(
-        self,
-        statement: Executable,
-        params: Optional[_CoreAnyExecuteParams] = None,
-        *,
-        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-        bind_arguments: Optional[_BindArguments] = None,
-        _parent_execute_state: Optional[Any] = None,
-        _add_event: Optional[Any] = None,
-    ) -> Result[Any] | AdaptedResult[Any]:
-        result = super().execute(
-            statement,
-            params,
-            execution_options=execution_options,
-            bind_arguments=bind_arguments,
-            _parent_execute_state=_parent_execute_state,
-            _add_event=_add_event,
-        )
-        if isinstance(statement, AdaptedProtocol):
-            return AdaptedResult(
-                real_result=result,
-                adapter=statement.adapter,
-                scalar_adapter=statement.scalar_adapter,
-            )
-        return result
-
-    def add(self, instance: object, _warn: bool = True) -> None:
-        super().add(instance, _warn)
-        if (
-            isinstance(instance, BaseTransmuter)
-            and self._validation_context is not None
-        ):
-            self._validation_context[instance.__provided__] = instance
-
-    def refresh(
-        self,
-        instance: object,
-        attribute_names: Iterable[str] | None = None,
-        with_for_update: ForUpdateArg | None | bool | dict[str, Any] = None,
-    ) -> None:
-        super().refresh(instance, attribute_names, with_for_update)
-        if isinstance(instance, BaseTransmuter):
-            instance.revalidate()
-
-    def merge(
-        self,
-        instance: T,
-        *,
-        load: bool = True,
-        options: Sequence[ORMOption] | None = None,
-    ) -> T:
-        super().merge(instance, load=load, options=options)
-        instance.__pydantic_validator__.validate_python(
-            instance.__provided__,
-            self_instance=instance,
-        )
-        return instance
