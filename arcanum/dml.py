@@ -47,6 +47,8 @@ class AdaptedUpdateBase(ValuesBase):
 
 
 class AdaptedInsert(Insert, AdaptedUpdateBase):
+    inherit_cache = True
+
     if TYPE_CHECKING:
 
         @overload
@@ -173,6 +175,8 @@ class AdaptedDMLWhereBase(DMLWhereBase):
 
 
 class AdaptedUpdate(Update, AdaptedDMLWhereBase, AdaptedUpdateBase):
+    inherit_cache = True
+
     if TYPE_CHECKING:
 
         @overload
@@ -286,6 +290,8 @@ class AdaptedReturningUpdate(AdaptedUpdate, AdaptedReturnRows[_TP]): ...
 
 
 class AdaptedDelete(Delete, AdaptedDMLWhereBase, AdaptedUpdateBase):
+    inherit_cache = True
+
     if TYPE_CHECKING:
 
         @overload

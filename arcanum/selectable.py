@@ -61,6 +61,8 @@ class AdaptedReturnRows(AdaptedProtocol, TypedReturnsRows[_TP]):
 
 
 class AdaptedSelect(Select, AdaptedReturnRows[_TP]):
+    inherit_cache = True
+
     def __init__(
         self,
         *entities: type[Any],

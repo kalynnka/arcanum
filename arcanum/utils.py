@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=100)
 def get_cached_adapter(type: type) -> TypeAdapter[Any]:
     """Cached TypeAdapter factory to avoid recreating adapters for the same type."""
     return TypeAdapter(type)
