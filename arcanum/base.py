@@ -239,6 +239,11 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             if isinstance(association, Association):
                 association.prepare(self, name)
 
+    @classmethod
+    def __clause_element__(cls):
+        insp = inspect(cls.__provider__)
+        return insp
+
     @model_validator(mode="wrap")
     @classmethod
     def model_formulate(

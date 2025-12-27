@@ -33,7 +33,13 @@ def test_bless_foo_into_protocol(foo_with_bar: Foo, engine: Engine):
 
 
 def test_column_expression(engine: Engine, foo_with_bar: Foo):
-    stmt = select(Foo).where(Foo["id"] == foo_with_bar.id)
+    from sqlalchemy import insert as sa_insert
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.inspection import inspect
+
+    insp1 = inspect(Foo.__provider__)
+    stmt = sa_select(Foo).where(Foo["id"] == foo_with_bar.id)
+    stmt_i = sa_insert(Foo).values(name="New Foo").returning(Foo)
     with Session(engine) as session:
         result = session.execute(stmt)
         foo = result.scalars().one()

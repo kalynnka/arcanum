@@ -101,7 +101,10 @@ class Expression(Generic[T]):
         BinaryExpression[bool],
     ]
 
-    def __call__(self) -> Union[InstrumentedAttribute[Any], BinaryExpression[bool]]:
+    def __call__(self):
+        return self.inner
+
+    def __clause_element__(self):
         return self.inner
 
     def __init__(
@@ -196,7 +199,7 @@ class Column(Expression[T]):
 
         super().__init__(inner=getattr(self.owner.__provider__, self.used_name))
 
-    def __call__(self) -> InstrumentedAttribute[Any]:
+    def __call__(self):
         return self.inner
 
     def asc(self) -> Self:
