@@ -22,7 +22,6 @@ from pydantic import (
     create_model,
     model_validator,
 )
-from pydantic._internal._generics import PydanticGenericMetadata
 from pydantic._internal._model_construction import ModelMetaclass, NoInitField
 from pydantic.fields import Field, FieldInfo, PrivateAttr
 from sqlalchemy.inspection import inspect
@@ -60,48 +59,39 @@ class Identity:
     field_specifiers=(Field, PrivateAttr, NoInitField),
 )
 class TransmuterMetaclass(ModelMetaclass):
+    __transmuter_complete__: bool
+    __transmuter_providers__: dict[str, type[Any]]
+    __transmuter_associations__: dict[str, FieldInfo]
+    __transmuter_identities__: dict[str, FieldInfo]
+    __transmuter_create_model__: Optional[type[BaseModel]]
+    __transmuter_update_model__: Optional[type[BaseModel]]
+
     if TYPE_CHECKING:
         __pydantic_fields__: dict[str, FieldInfo]
-        __transmuter_associations__: dict[str, FieldInfo]
-        __transmuter_identities__: dict[str, FieldInfo]
-        __transmuter_complete__: bool
-        __transmuter_create_model__: Optional[type[BaseModel]]
-        __transmuter_update_model__: Optional[type[BaseModel]]
 
         model_config: ConfigDict
         model_fields: dict[str, FieldInfo]
 
-    def __new__(
-        mcs,
-        cls_name: str,
-        bases: tuple[type[Any], ...],
-        namespace: dict[str, Any],
-        __pydantic_generic_metadata__: PydanticGenericMetadata | None = None,
-        __pydantic_reset_parent_namespace__: bool = True,
-        _create_model_module: str | None = None,
-        **kwargs: Any,
-    ) -> TransmuterMetaclass:
-        cls: TransmuterMetaclass = super().__new__(
-            mcs,
-            cls_name,
-            bases,
-            namespace,
-            __pydantic_generic_metadata__,
-            __pydantic_reset_parent_namespace__,
-            _create_model_module,
-            **kwargs,
-        )
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.__transmuter_associations__ = {}
+        self.__transmuter_associations_completed__ = False
+        self.__transmuter_identities__ = {}
+        self.__transmuter_create_model__ = None
+        self.__transmuter_update_model__ = None
 
-        cls.__transmuter_associations__ = {}
-        cls.__transmuter_associations_completed__ = False
-        cls.__transmuter_identities__ = {}
-        cls.__transmuter_create_model__ = None
-        cls.__transmuter_update_model__ = None
-        cls._ensure_associations_resolved()
-        cls._collect_identities()
-        cls.__transmuter_complete__ = True
+        self._ensure_associations_resolved()
 
-        return cls
+        for name, info in self.__pydantic_fields__.items():
+            for metadata in info.metadata:
+                if isinstance(metadata, type) and issubclass(metadata, Identity):
+                    self.__transmuter_identities__[name] = info
+                    break
+                elif isinstance(metadata, Identity):
+                    self.__transmuter_identities__[name] = info
+                    break
+
+        self.__transmuter_complete__ = True
 
     def _ensure_associations_resolved(self) -> None:
         if self.__transmuter_associations_completed__:
@@ -130,16 +120,6 @@ class TransmuterMetaclass(ModelMetaclass):
             elif isinstance(annotation, type) and issubclass(annotation, Association):
                 self.__transmuter_associations__[name] = info
 
-    def _collect_identities(self) -> None:
-        for name, info in self.__pydantic_fields__.items():
-            for metadata in info.metadata:
-                if isinstance(metadata, type) and issubclass(metadata, Identity):
-                    self.__transmuter_identities__[name] = info
-                    break
-                elif isinstance(metadata, Identity):
-                    self.__transmuter_identities__[name] = info
-                    break
-
     def __getattr__(self, name: str) -> Any:
         try:
             return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
@@ -149,6 +129,16 @@ class TransmuterMetaclass(ModelMetaclass):
                 if hasattr(provider, name):
                     return getattr(provider, name)
             raise e
+
+    # TODO: No good way to give proper generic type to Column here
+    def __getitem__(self, item: str) -> Column[Any]:
+        if info := self.__pydantic_fields__.get(item):
+            # false positive from pyright here
+            # type[BaseTransmuter] or its subclasses are instances of the metaclass TransmuterMetaclass here
+            column = Column[info.annotation](self, item, info)  # pyright: ignore[reportArgumentType]
+            column.__args__ = (info.annotation,)
+            return column
+        raise KeyError(f"Field '{item}' not found in {self.__name__}")
 
     @property
     def model_associations(self) -> dict[str, FieldInfo]:
@@ -162,7 +152,7 @@ class TransmuterMetaclass(ModelMetaclass):
 
     @property
     def Create(self) -> type[BaseModel]:
-        if self.__transmuter_create_model__ is not None:
+        if self.__transmuter_create_model__:
             return self.__transmuter_create_model__
 
         config = self.model_config.copy()
@@ -188,7 +178,7 @@ class TransmuterMetaclass(ModelMetaclass):
 
     @property
     def Update(self) -> type[BaseModel]:
-        if self.__transmuter_update_model__ is not None:
+        if self.__transmuter_update_model__:
             return self.__transmuter_update_model__
 
         config = self.model_config.copy()
@@ -209,16 +199,6 @@ class TransmuterMetaclass(ModelMetaclass):
             **field_definitions,  # type: ignore
         )
         return self.__transmuter_update_model__  # type: ignore
-
-    # TODO: No good way to give proper generic type to Column here
-    def __getitem__(self, item: str) -> Column[Any]:
-        if info := self.__pydantic_fields__.get(item):
-            # false positive from pyright here
-            # type[BaseTransmuter] or its subclasses are instances of the metaclass TransmuterMetaclass here
-            column = Column[info.annotation](self, item, info)  # pyright: ignore[reportArgumentType]
-            column.__args__ = (info.annotation,)
-            return column
-        raise KeyError(f"Field '{item}' not found in {self.__name__}")
 
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):

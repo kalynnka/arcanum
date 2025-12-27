@@ -64,14 +64,17 @@ class AdaptedSelect(Select, AdaptedReturnRows[_TP]):
 
     def __init__(
         self,
-        *entities: type[Any],
-        adapter: TypeAdapter,
-        scalar_adapter: TypeAdapter,
+        *entities: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
         **dialect_kw: Any,
     ) -> None:
-        super().__init__(*entities, **dialect_kw)
-        self.adapter = adapter
-        self.scalar_adapter = scalar_adapter
+        # TODO: maybe useful
+        # https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#inspecting-entities-and-columns-from-orm-enabled-select-and-dml-statements
+        python_types, unwrapped_entities = zip(
+            *(resolve_entities(entity) for entity in entities)
+        )
+        super().__init__(*unwrapped_entities, **dialect_kw)
+        self.adapter = get_cached_adapter(tuple[*python_types])
+        self.scalar_adapter = get_cached_adapter(python_types[0])
 
     def where(
         self,
@@ -207,14 +210,4 @@ def select(
 def select(
     *entities: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
 ) -> AdaptedSelect[Any]:
-    # TODO: maybe useful
-    # https://docs.sqlalchemy.org/en/20/orm/queryguide/api.html#inspecting-entities-and-columns-from-orm-enabled-select-and-dml-statements
-    python_types, unwrapped_entities = zip(
-        *(resolve_entities(entity) for entity in entities)
-    )
-
-    return AdaptedSelect(
-        *unwrapped_entities,
-        adapter=get_cached_adapter(tuple[*python_types]),
-        scalar_adapter=get_cached_adapter(python_types[0]),
-    )
+    return AdaptedSelect(*entities)

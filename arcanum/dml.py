@@ -35,11 +35,11 @@ class AdaptedUpdateBase(ValuesBase):
 
     def returning(
         self,
-        *cols: _ColumnsClauseArgument,
+        *cols: _ColumnsClauseArgument[Any] | ArcanumColumn[Any],
         sort_by_parameter_order: bool = False,
         **__kw: Any,
     ) -> UpdateBase:
-        python_types, resolved_entities = zip(*(resolve_entities(col) for col in cols))  # pyright: ignore[reportArgumentType]
+        python_types, resolved_entities = zip(*(resolve_entities(col) for col in cols))
         self.adapter = get_cached_adapter(tuple[*python_types])
         self.scalar_adapter = get_cached_adapter(python_types[0])
         return super().returning(
