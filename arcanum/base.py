@@ -59,8 +59,9 @@ class Identity:
     field_specifiers=(Field, PrivateAttr, NoInitField),
 )
 class TransmuterMetaclass(ModelMetaclass):
+    __transmuter_registry__: ClassVar[dict[type[Any], TransmuterMetaclass]] = {}
+
     __transmuter_complete__: bool
-    __transmuter_providers__: dict[str, type[Any]]
     __transmuter_associations__: dict[str, FieldInfo]
     __transmuter_identities__: dict[str, FieldInfo]
     __transmuter_create_model__: Optional[type[BaseModel]]
@@ -151,6 +152,10 @@ class TransmuterMetaclass(ModelMetaclass):
         return self.__transmuter_identities__
 
     @property
+    def model_registry(self) -> dict[type[Any], TransmuterMetaclass]:
+        return self.__transmuter_registry__
+
+    @property
     def Create(self) -> type[BaseModel]:
         if self.__transmuter_create_model__:
             return self.__transmuter_create_model__
@@ -238,6 +243,15 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             association = getattr(self, name)
             if isinstance(association, Association):
                 association.prepare(self, name)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if hasattr(cls, "__provider__") and cls.__provider__ is not None:
+            cls.__transmuter_registry__[cls.__provider__] = cls
+        else:
+            raise ValueError(
+                f"Transmuter subclass {cls.__name__} must define a __provider__"
+            )
 
     @classmethod
     def __clause_element__(cls):

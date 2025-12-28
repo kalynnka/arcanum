@@ -1,14 +1,22 @@
+from __future__ import annotations
+
 from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Sequence, TypeVar, overload
 
 from sqlalchemy import (
     CursorResult,
+    Delete,
     Executable,
+    Insert,
     Result,
     ScalarResult,
+    Select,
+    Table,
+    Update,
     UpdateBase,
     exc,
     inspect,
+    select,
     tuple_,
     util,
 )
@@ -27,12 +35,30 @@ from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedRet
 
 from arcanum.base import BaseTransmuter, validation_context
 from arcanum.expression import Expression
-from arcanum.result import _T, _TP, AdaptedResult, AdaptedScalarResult
-from arcanum.selectable import AdaptedProtocol, AdaptedReturnRows, select
+from arcanum.result import _T, AdaptedResult
+from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
 
 ExpressionType = _ColumnExpressionArgument[bool] | Expression[Any]
+
+
+def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
+    entities: list[type[Any]] = []
+    if isinstance(statement, Select):
+        for desc in statement.column_descriptions:
+            if type := desc.get("type"):
+                transmuter = BaseTransmuter.model_registry.get(type)
+                entities.append(transmuter or type.python_type)
+    elif isinstance(statement, (Insert, Update, Delete)):
+        if statement._returning:
+            for item in statement._returning:
+                if isinstance(item, Table):
+                    transmuter = BaseTransmuter.model_registry[item.entity_namespace]  # type: ignore[index]
+                    entities.append(transmuter)
+                else:
+                    entities.append(item.type.python_type)  # type: ignore[attr-defined]
+    return entities
 
 
 class Session(SqlalchemySession):
@@ -56,17 +82,6 @@ class Session(SqlalchemySession):
             )
         return [self._validation_context[item] for item in super().__iter__()]
 
-    @overload
-    def execute(
-        self,
-        statement: AdaptedReturnRows[_TP],
-        params: Optional[_CoreAnyExecuteParams] = None,
-        *,
-        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-        bind_arguments: Optional[_BindArguments] = None,
-        _parent_execute_state: Optional[Any] = None,
-        _add_event: Optional[Any] = None,
-    ) -> AdaptedResult[_TP]: ...
     @overload
     def execute(
         self,
@@ -119,12 +134,17 @@ class Session(SqlalchemySession):
             _parent_execute_state=_parent_execute_state,
             _add_event=_add_event,
         )
-        if isinstance(statement, AdaptedProtocol):
+
+        entities = resolve_statement_entities(statement)
+        if entities and any(
+            isinstance(e, type) and issubclass(e, BaseTransmuter) for e in entities
+        ):
             return AdaptedResult(
                 real_result=result,
-                adapter=statement.adapter,
-                scalar_adapter=statement.scalar_adapter,
+                adapter=get_cached_adapter(tuple[*entities]),
+                scalar_adapter=get_cached_adapter(entities[0]),
             )
+
         return result
 
     @overload
@@ -167,16 +187,6 @@ class Session(SqlalchemySession):
     @overload
     def scalars(
         self,
-        statement: AdaptedReturnRows[tuple[_T]],
-        params: Optional[_CoreAnyExecuteParams] = None,
-        *,
-        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-        bind_arguments: Optional[_BindArguments] = None,
-        **kw: Any,
-    ) -> AdaptedScalarResult[_T]: ...
-    @overload
-    def scalars(
-        self,
         statement: TypedReturnsRows[tuple[_T]],
         params: Optional[_CoreAnyExecuteParams] = None,
         *,
@@ -213,19 +223,19 @@ class Session(SqlalchemySession):
         ).scalars()
 
     def expunge(self, instance: BaseTransmuter) -> None:
-        if self._validation_context:
+        if self._validation_context is not None:
             if instance.__provided__ in self._validation_context:
                 del self._validation_context[instance.__provided__]
         super().expunge(instance.__provided__)
 
     def expunge_all(self) -> None:
-        if self._validation_context:
+        if self._validation_context is not None:
             self._validation_context.clear()
         return super().expunge_all()
 
     def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
         super().add(instance, _warn)
-        if self._validation_context:
+        if self._validation_context is not None:
             self._validation_context[instance.__provided__] = instance
 
     def refresh(
@@ -234,6 +244,9 @@ class Session(SqlalchemySession):
         attribute_names: Iterable[str] | None = None,
         with_for_update: ForUpdateArg | None | bool | dict[str, Any] = None,
     ) -> None:
+        if self._validation_context is not None:
+            if instance.__provided__ not in self._validation_context:
+                self._validation_context[instance.__provided__] = instance
         super().refresh(instance, attribute_names, with_for_update)
         instance.revalidate()
 
@@ -249,7 +262,7 @@ class Session(SqlalchemySession):
 
     def enable_relationship_loading(self, obj: BaseTransmuter) -> None:
         super().enable_relationship_loading(obj.__provided__)
-        if self._validation_context:
+        if self._validation_context is not None:
             self._validation_context[obj.__provided__] = obj
 
     def get(
