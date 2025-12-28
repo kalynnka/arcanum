@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from arcanum.association import Relation
 from arcanum.database import AsyncSession, Session
 from tests.models import Base
-from tests.schemas import Bar, Foo
+from tests.schemas import Bar, Foo, sqlalchemy_materia
 
 # Database URL points to the docker-compose postgres service exposed on localhost
 DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"
@@ -52,6 +52,12 @@ async def async_engine():
         yield engine
     finally:
         await engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def materia():
+    with sqlalchemy_materia:
+        yield
 
 
 @pytest.fixture()

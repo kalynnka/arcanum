@@ -20,9 +20,6 @@ from sqlalchemy.sql._typing import (
 )
 from sqlalchemy.sql.base import ExecutableOption
 from sqlalchemy.sql.dml import Delete, Insert, Update, UpdateBase
-from sqlalchemy.sql.schema import (
-    Table,
-)
 from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedReturnsRows
 
 from arcanum.base import BaseTransmuter, validation_context
@@ -40,13 +37,14 @@ def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
     if isinstance(statement, Select):
         for desc in statement.column_descriptions:
             if type := desc.get("type"):
-                transmuter = BaseTransmuter.model_registry.get(type)
+                transmuter = BaseTransmuter.transmuter_formulars.reverse.get(type)
                 entities.append(transmuter or type.python_type)
     elif isinstance(statement, (Insert, Update, Delete)):
         if statement._returning:
             for item in statement._returning:
-                if isinstance(item, Table):
-                    transmuter = BaseTransmuter.model_registry[item.entity_namespace]  # type: ignore[index]
+                if transmuter := BaseTransmuter.transmuter_formulars.reverse.get(
+                    item.entity_namespace
+                ):
                     entities.append(transmuter)
                 else:
                     entities.append(item.type.python_type)  # type: ignore[attr-defined]
@@ -271,7 +269,7 @@ class Session(SqlalchemySession):
         bind_arguments: Optional[_BindArguments] = None,
     ) -> Optional[T]:
         instance = super().get(
-            entity.__provider__,
+            entity.__transmuter_provider__,
             ident,
             options=options,
             populate_existing=populate_existing,
@@ -393,7 +391,7 @@ class Session(SqlalchemySession):
         if not idents:
             return []
 
-        mapper = inspect(entity.__provider__)
+        mapper = inspect(entity.__transmuter_provider__)
         pk_columns = mapper.primary_key
 
         if len(pk_columns) == 1:

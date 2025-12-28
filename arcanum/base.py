@@ -20,16 +20,22 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     ModelWrapValidatorHandler,
+    ValidationInfo,
     create_model,
     model_validator,
 )
 from pydantic._internal._model_construction import ModelMetaclass, NoInitField
 from pydantic.fields import Field, FieldInfo, PrivateAttr
 from sqlalchemy.inspection import inspect
-from sqlalchemy.orm import LoaderCallableStatus
 
 from arcanum.association import Association
 from arcanum.expression import Column
+from arcanum.materia.base import (
+    BaseMateria,
+    BidirectonDict,
+    NoOpMateria,
+    active_materia,
+)
 
 T = TypeVar("T", bound="BaseTransmuter")
 M = TypeVar("M", bound="TransmuterMetaclass")
@@ -62,8 +68,6 @@ class Identity:
     field_specifiers=(Field, PrivateAttr, NoInitField),
 )
 class TransmuterMetaclass(ModelMetaclass):
-    __transmuter_registry__: ClassVar[dict[type[Any], TransmuterMetaclass]] = {}
-
     __transmuter_complete__: bool
     __transmuter_associations__: dict[str, FieldInfo]
     __transmuter_identities__: dict[str, FieldInfo]
@@ -97,6 +101,8 @@ class TransmuterMetaclass(ModelMetaclass):
 
         self.__transmuter_complete__ = True
 
+        NoOpMateria().bless()(self)
+
     def _ensure_associations_resolved(self) -> None:
         if self.__transmuter_associations_completed__:
             return
@@ -129,7 +135,7 @@ class TransmuterMetaclass(ModelMetaclass):
             return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
         except AttributeError as e:
             if object.__getattribute__(self, "__transmuter_complete__"):
-                provider = object.__getattribute__(self, "__provider__")
+                provider = object.__getattribute__(self, "__transmuter_provider__")
                 if hasattr(provider, name):
                     return getattr(provider, name)
             raise e
@@ -137,12 +143,22 @@ class TransmuterMetaclass(ModelMetaclass):
     # TODO: No good way to give proper generic type to Column here
     def __getitem__(self, item: str) -> Column[Any]:
         if info := self.__pydantic_fields__.get(item):
-            # false positive from pyright here
-            # type[BaseTransmuter] or its subclasses are instances of the metaclass TransmuterMetaclass here
-            column = Column[info.annotation](self, item, info)  # pyright: ignore[reportArgumentType]
+            column = Column[info.annotation](self, item, info)
             column.__args__ = (info.annotation,)
             return column
         raise KeyError(f"Field '{item}' not found in {self.__name__}")
+
+    @property
+    def __transmuter_materia__(self) -> BaseMateria:
+        return active_materia.get()
+
+    @property
+    def __transmuter_provider__(self) -> type[Any]:
+        if self not in self.__transmuter_materia__:
+            raise AttributeError(
+                f"Transmuter {self.__name__} is not blessed within {self.__transmuter_materia__.__class__.__name__}"
+            )
+        return self.__transmuter_materia__[self]
 
     @property
     def model_associations(self) -> dict[str, FieldInfo]:
@@ -155,8 +171,10 @@ class TransmuterMetaclass(ModelMetaclass):
         return self.__transmuter_identities__
 
     @property
-    def model_registry(self) -> dict[type[Any], TransmuterMetaclass]:
-        return self.__transmuter_registry__
+    def transmuter_formulars(
+        self,
+    ) -> BidirectonDict[TransmuterMetaclass, type[Any]]:
+        return self.__transmuter_materia__.formulars
 
     @property
     def Create(self) -> type[BaseModel]:
@@ -210,12 +228,10 @@ class TransmuterMetaclass(ModelMetaclass):
 
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
-    __provider__: ClassVar[type[Any]]
+    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True)
+
+    _revalidating: bool = PrivateAttr(default=False)
     __provided__: Any = NoInitField(init=False)
-
-    _provider_revalidating: bool = PrivateAttr(default=False)
-
-    model_config = ConfigDict(from_attributes=True)
 
     def __getattribute__(self, name: str) -> Any:
         value: Any = object.__getattribute__(self, name)
@@ -239,7 +255,7 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        self.__provided__ = self.__provider__(
+        self.__provided__ = type(self).__transmuter_provider__(
             **self.model_dump(exclude=set(type(self).model_associations.keys()))
         )
         for name in type(self).model_associations:
@@ -247,54 +263,26 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             if isinstance(association, Association):
                 association.prepare(self, name)
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        if hasattr(cls, "__provider__") and cls.__provider__ is not None:
-            cls.__transmuter_registry__[cls.__provider__] = cls
-        else:
-            raise ValueError(
-                f"Transmuter subclass {cls.__name__} must define a __provider__"
-            )
-
     @classmethod
     def __clause_element__(cls):
-        return inspect(cls.__provider__)
+        return inspect(cls.__transmuter_provider__)
 
     @model_validator(mode="wrap")
     @classmethod
     def model_formulate(
-        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self], info: ValidationInfo
     ) -> BaseTransmuter:
-        if isinstance(data, cls.__provider__):
+        if isinstance(data, cls.__transmuter_provider__):
             context = validated.get()
             if cached := context.get(data):
                 # if the cached instance is in revalidating state, let it through to sync orm state
-                if not cached._provider_revalidating:
+                if not cached._revalidating:
                     return cached
 
-            inspector = inspect(data)
-
-            # don't use a dict to hold loaded data here
-            # to avoid pydantic's handler call this formulate function again and go to the else block
-            # use an object instead to keep the behavior same with pydantic's original model_validate
-            # with from_attributes=True which will skip the instance __init__.
-            loaded = LoadedData()
-            loaded_attrs = loaded.__dict__
-
-            # Get all loaded attributes from sqlalchemy orm instance
-            for field_name, info in cls.model_fields.items():
-                used_name = info.alias or field_name
-                if used_name in inspector.attrs:
-                    attr = inspector.attrs[used_name]
-                    # skip unloaded attributes to prevent pydantic
-                    # from firing the loadings on all lazy attributes in orm
-                    loaded_attrs[used_name] = attr.loaded_value
-                else:
-                    # hybrid attrs maybe
-                    loaded_attrs[used_name] = LoaderCallableStatus.NO_VALUE
-
-            instance = handler(loaded)
+            preprocessed = cls.__transmuter_materia__.before_validator(data, info)
+            instance = handler(preprocessed)
             instance.__provided__ = data
+            instance = cls.__transmuter_materia__.after_validator(instance, info)
 
             if not cached:
                 context[data] = instance
@@ -324,16 +312,16 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         """Re-validate the instance against the underlying provider instance."""
         # if True, it means that the revalidation is already in progress and triggered by an upper validation round,
         # so we skip the revalidation here to avoid infinite recursion.
-        if self._provider_revalidating:
+        if self._revalidating:
             return self
 
-        self._provider_revalidating = True
+        self._revalidating = True
         if self.__provided__:
             self.__pydantic_validator__.validate_python(
                 self.__provided__,
                 self_instance=self,
             )
         # double ensure the revalidation flag is reset to False
-        self._provider_revalidating = False
+        self._revalidating = False
 
         return self

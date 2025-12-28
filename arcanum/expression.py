@@ -17,7 +17,7 @@ from sqlalchemy import BinaryExpression
 from sqlalchemy.orm import InstrumentedAttribute
 
 if TYPE_CHECKING:
-    from arcanum.base import BaseTransmuter
+    from arcanum.base import TransmuterMetaclass
 
 T = TypeVar("T")
 
@@ -185,19 +185,26 @@ class Column(Expression[T]):
     __args__: tuple[T, ...]
 
     inner: InstrumentedAttribute[Any]
-    owner: type[BaseTransmuter]
+    owner: TransmuterMetaclass
 
     field_name: str
     used_name: str
     info: FieldInfo
 
-    def __init__(self, owner: type[BaseTransmuter], field_name: str, info: FieldInfo):
+    def __init__(
+        self,
+        owner: TransmuterMetaclass,
+        field_name: str,
+        info: FieldInfo,
+    ):
         self.owner = owner
         self.field_name = field_name
         self.used_name = info.alias or field_name
         self.info = info
 
-        super().__init__(inner=getattr(self.owner.__provider__, self.used_name))
+        super().__init__(
+            inner=getattr(self.owner.__transmuter_provider__, self.used_name)
+        )
 
     def __call__(self):
         return self.inner
