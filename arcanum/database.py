@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import _GeneratorContextManager
-from typing import Any, Iterable, Optional, Sequence, TypeVar, overload
+from typing import Any, Iterable, Optional, Self, Sequence, TypeVar, overload
 
 from sqlalchemy import (
     CursorResult,
@@ -21,6 +21,7 @@ from sqlalchemy import (
     util,
 )
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
+from sqlalchemy.ext.asyncio import AsyncSession as SqlalchemyAsyncSession
 from sqlalchemy.orm import Session as SqlalchemySession
 from sqlalchemy.orm._typing import OrmExecuteOptionsParameter
 from sqlalchemy.orm.interfaces import ORMOption
@@ -514,3 +515,40 @@ class Session(SqlalchemySession):
             statement = statement.filter_by(**filters)
 
         yield from self.execute(statement).scalars().partitions(size)
+
+
+class AsyncSession(SqlalchemyAsyncSession):
+    sync_session_class = Session
+    sync_session: Session
+
+    async def __aenter__(self) -> Self:
+        self._validation_context_manager = validation_context()
+        self._validation_context = self._validation_context_manager.__enter__()
+        await super().__aenter__()
+        return self
+
+    async def __aexit__(self, type_: Any, value: Any, traceback: Any) -> None:
+        self._validation_context_manager.__exit__(type_, value, traceback)
+        self._validation_context = None
+        await super().__aexit__(type_, value, traceback)
+
+    @property
+    def _validation_context(self) -> dict[Any, BaseTransmuter] | None:
+        return self.sync_session._validation_context
+
+    @_validation_context.setter
+    def _validation_context(self, value: dict[Any, BaseTransmuter] | None) -> None:
+        self.sync_session._validation_context = value
+
+    @property
+    def _validation_context_manager(
+        self,
+    ) -> _GeneratorContextManager[dict[Any, BaseTransmuter]]:
+        return self.sync_session._validation_context_manager
+
+    @_validation_context_manager.setter
+    def _validation_context_manager(
+        self,
+        value: _GeneratorContextManager[dict[Any, BaseTransmuter]],
+    ) -> None:
+        self.sync_session._validation_context_manager = value

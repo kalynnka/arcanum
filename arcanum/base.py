@@ -255,8 +255,7 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     @classmethod
     def __clause_element__(cls):
-        insp = inspect(cls.__provider__)
-        return insp
+        return inspect(cls.__provider__)
 
     @model_validator(mode="wrap")
     @classmethod

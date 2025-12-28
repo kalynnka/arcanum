@@ -14,7 +14,9 @@ class Foo(Base):
     name: Mapped[str] = mapped_column(String(50), nullable=False)
 
     bars: Mapped[list[Bar]] = relationship(
-        back_populates="foo", uselist=True, cascade="all, delete-orphan"
+        back_populates="foo",
+        uselist=True,
+        cascade="all, delete-orphan",
     )
 
 

@@ -284,10 +284,10 @@ class Relation(Association[Optional_T]):
 
         return wrapper
 
-    def _load(self):
+    def _load(self) -> Optional_T | None:
         # maybe during deepcopy from field default, or the relationship is already loaded
         if not self.__instance__ or self.__loaded__:
-            return
+            return self.__payloads__
 
         if self.__payloads__ is not None and self.__payloads__.__provided__:
             self.__provided__ = self.__payloads__.__provided__
@@ -295,6 +295,8 @@ class Relation(Association[Optional_T]):
             self.__payloads__ = self.validate_python(self.__provided__)
 
         self.__loaded__ = True
+
+        return self.__payloads__
 
     def __await__(self):
         return greenlet_spawn(self._load).__await__()
@@ -411,11 +413,11 @@ class RelationCollection(list[T], Association[T]):
     def _load(self):
         # maybe during deepcopy from field default
         if not self.__instance__:
-            return
+            return self
 
         # or the relationship is already loaded
         if self.__loaded__:
-            return
+            return self
 
         if not len(self.__provided__) == super().__len__():
             # If the length of __provided__ is not equal to the length of self,
@@ -425,9 +427,10 @@ class RelationCollection(list[T], Association[T]):
 
         self.__loaded__ = True
 
+        return self
+
     def __await__(self):
-        coro = greenlet_spawn(self._load).__await__()
-        return coro
+        return greenlet_spawn(self._load).__await__()
 
     @overload
     def __getitem__(self, index: SupportsIndex) -> T: ...

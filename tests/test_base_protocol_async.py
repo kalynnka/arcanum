@@ -1,19 +1,26 @@
 import pytest
-from pydantic import ValidationError
-from sqlalchemy import Engine, delete, insert, select, update
+from sqlalchemy import delete, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from arcanum.database import Session
+from arcanum.database import AsyncSession
 from tests.models import Foo as FooModel
 from tests.schemas import Bar, Foo
 
 
-def test_bless_foo_into_protocol(foo_with_bar: Foo, engine: Engine):
-    with Session(engine) as session:
-        foo = session.get_one(Foo, foo_with_bar.id)
+@pytest.mark.asyncio
+async def test_bless_foo_into_protocol_async(
+    async_engine: AsyncEngine,
+    async_foo_with_bar: Foo,
+):
+    async with AsyncSession(async_engine) as session:
+        foo = await session.get_one(Foo, async_foo_with_bar.id)
 
-        assert foo.id == foo_with_bar.id
-        assert foo.name == foo_with_bar.name
+        assert foo.id == async_foo_with_bar.id
+        assert foo.name == async_foo_with_bar.name
         assert isinstance(foo.__provided__, FooModel)
+
+        # explicitly trigger the loading of relationships
+        await foo.bars
 
         assert len(foo.bars) == 2
         assert isinstance(foo.bars[0], Bar)
@@ -21,43 +28,48 @@ def test_bless_foo_into_protocol(foo_with_bar: Foo, engine: Engine):
         assert foo.bars[0].foo.value is foo
 
         foo.bars[0].data = "Updated Bar Data"
-        session.flush()
+        await session.flush()
 
-        bar = session.get(Bar, foo.bars[0].id)
+        bar = await session.get(Bar, foo.bars[0].id)
         assert bar is not None
         assert bar.data == foo.bars[0].data
 
 
-def test_column_expression(engine: Engine, foo_with_bar: Foo):
-    stmt = select(Foo).where(Foo["id"] == foo_with_bar.id)
-    with Session(engine) as session:
-        result = session.execute(stmt)
+@pytest.mark.asyncio
+async def test_column_expression_async(
+    async_engine: AsyncEngine, async_foo_with_bar: Foo
+):
+    stmt = select(Foo).where(Foo["id"] == async_foo_with_bar.id)
+    async with AsyncSession(async_engine) as session:
+        result = await session.execute(stmt)
         foo = result.scalars().one()
         assert foo is not None
-        assert foo.id == foo_with_bar.id
-        assert foo.name == foo_with_bar.name
+        assert foo.id == async_foo_with_bar.id
+        assert foo.name == async_foo_with_bar.name
 
 
-def test_adapted_select(engine: Engine, foo_with_bar: Foo):
-    with Session(engine) as session:
-        stmt = select(Foo, Foo["name"]).where(Foo["id"] == foo_with_bar.id)
-        result = session.execute(stmt)
+@pytest.mark.asyncio
+async def test_adapted_select_async(async_engine: AsyncEngine, async_foo_with_bar: Foo):
+    async with AsyncSession(async_engine) as session:
+        stmt = select(Foo, Foo["name"]).where(Foo["id"] == async_foo_with_bar.id)
+        result = await session.execute(stmt)
         row = result.fetchone()
         assert row
         assert isinstance(row[0], Foo)
-        assert row[0].id == foo_with_bar.id
-        assert row[0].name == foo_with_bar.name
-        assert row[1] == foo_with_bar.name
+        assert row[0].id == async_foo_with_bar.id
+        assert row[0].name == async_foo_with_bar.name
+        assert row[1] == async_foo_with_bar.name
 
 
-def test_adapted_insert(engine: Engine):
-    with Session(engine) as session:
+@pytest.mark.asyncio
+async def test_adapted_insert_async(async_engine: AsyncEngine):
+    async with AsyncSession(async_engine) as session:
         # no returning
         stmt = insert(Foo).values(name="Inserted Foo")
-        session.execute(stmt)
+        await session.execute(stmt)
 
         inserted_foo = (
-            session.execute(select(Foo).where(Foo["name"] == "Inserted Foo"))
+            (await session.execute(select(Foo).where(Foo["name"] == "Inserted Foo")))
             .scalars()
             .one()
         )
@@ -71,20 +83,21 @@ def test_adapted_insert(engine: Engine):
             .values(name="Inserted Foo With Returning")
             .returning(Foo, Foo["id"])
         )
-        result = session.execute(stmt)
+        result = await session.execute(stmt)
         inserted_foo = result.scalars().one()
         assert result
 
 
-def test_adapted_update(engine: Engine, foo_with_bar: Foo):
-    with Session(engine) as session:
-        foo_id = foo_with_bar.id
+@pytest.mark.asyncio
+async def test_adapted_update_async(async_engine: AsyncEngine, async_foo_with_bar: Foo):
+    async with AsyncSession(async_engine) as session:
+        foo_id = async_foo_with_bar.id
 
         # update without returning
         stmt = update(Foo).where(Foo["id"] == foo_id).values(name="Updated Foo")
-        session.execute(stmt)
+        await session.execute(stmt)
 
-        updated1 = session.get(Foo, foo_id)
+        updated1 = await session.get(Foo, foo_id)
         assert updated1
         assert updated1.name == "Updated Foo"
 
@@ -95,7 +108,7 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
             .values(name="Updated Foo With Returning")
             .returning(Foo)
         )
-        result = session.execute(stmt)
+        result = await session.execute(stmt)
         updated2 = result.scalars().one()
 
         # TODO: We need an manual refresh/revalidate operation here to keep the transmuter object sync with the orm
@@ -121,7 +134,7 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
             .execution_options(synchronize_session=False)
             .returning(Foo)
         )
-        result = session.execute(stmt)
+        result = await session.execute(stmt)
         updated3 = result.scalars().one()
 
         assert updated1 is updated2 is updated3
@@ -133,7 +146,7 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
             == "Updated Foo With Returning"
         )
 
-        session.refresh(updated3)
+        await session.refresh(updated3)
 
         assert updated1 is updated2 is updated3
         assert updated1.__provided__ is updated2.__provided__ is updated3.__provided__
@@ -145,12 +158,13 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
         )
 
 
-def test_adapted_delete(engine: Engine):
-    with Session(engine) as session:
+@pytest.mark.asyncio
+async def test_adapted_delete_async(async_engine: AsyncEngine):
+    async with AsyncSession(async_engine) as session:
         # Create another foo to delete
         new_foo = Foo(name="To Be Deleted")
         session.add(new_foo)
-        session.flush()
+        await session.flush()
         # TODO: we must revalidate here to sync the returned identity keys from orm to transmuter object
         # revalidate won't issue an additional select statement as the identity keys are be already returned by sqlalchemy (with dialects that support returning)
         # except for Mysql :xd, in that case do session.refresh(new_foo)
@@ -158,7 +172,7 @@ def test_adapted_delete(engine: Engine):
 
         # delete with returning
         stmt = delete(Foo).where(Foo["id"] == new_foo.id).returning(Foo)
-        result = session.execute(stmt)
+        result = await session.execute(stmt)
         deleted_foo = result.scalars().one()
 
         assert isinstance(deleted_foo, Foo)
@@ -167,34 +181,8 @@ def test_adapted_delete(engine: Engine):
 
         # verify it's actually deleted
         after = (
-            session.execute(select(Foo).where(Foo["id"] == new_foo.id))
+            (await session.execute(select(Foo).where(Foo["id"] == new_foo.id)))
             .scalars()
             .one_or_none()
         )
         assert after is None
-
-
-def test_create_partial_models():
-    partial = Foo.Create(name="Partial Foo")
-    assert getattr(partial, "name") == "Partial Foo"
-    assert hasattr(partial, "id") is False
-
-    foo = Foo.shell(partial)
-    assert foo.name == "Partial Foo"
-    assert foo.id is None
-
-    # text ignored fields get defaulted
-    foo_with_extra = Foo.shell(Foo.Create(id=2, name="Another"))
-    assert foo_with_extra.id is None
-    assert foo_with_extra.name == "Another"
-
-
-def test_update_partial_models():
-    partial = Foo.Update(name="Updated Name")
-
-    foo = Foo(id=2, name="Initial Name").absorb(partial)
-    assert foo.name == "Updated Name"
-    assert foo.id == 2
-
-    with pytest.raises(ValidationError):
-        Foo.Update(id=3)  # id is frozen
