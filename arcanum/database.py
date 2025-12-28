@@ -3,35 +3,25 @@ from __future__ import annotations
 from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Self, Sequence, TypeVar, overload
 
-from sqlalchemy import (
-    CursorResult,
-    Delete,
-    Executable,
-    Insert,
-    Result,
-    ScalarResult,
-    Select,
-    Table,
-    Update,
-    UpdateBase,
-    exc,
-    inspect,
-    select,
-    tuple_,
-    util,
-)
+from sqlalchemy import exc, inspect, tuple_, util
+from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
+from sqlalchemy.engine.result import Result, ScalarResult
 from sqlalchemy.ext.asyncio import AsyncSession as SqlalchemyAsyncSession
 from sqlalchemy.orm import Session as SqlalchemySession
 from sqlalchemy.orm._typing import OrmExecuteOptionsParameter
 from sqlalchemy.orm.interfaces import ORMOption
 from sqlalchemy.orm.session import _BindArguments, _PKIdentityArgument
-from sqlalchemy.sql import functions
+from sqlalchemy.sql import Executable, Select, functions, select
 from sqlalchemy.sql._typing import (
     _ColumnExpressionArgument,
     _ColumnExpressionOrStrLabelArgument,
 )
 from sqlalchemy.sql.base import ExecutableOption
+from sqlalchemy.sql.dml import Delete, Insert, Update, UpdateBase
+from sqlalchemy.sql.schema import (
+    Table,
+)
 from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedReturnsRows
 
 from arcanum.base import BaseTransmuter, validation_context
@@ -552,3 +542,110 @@ class AsyncSession(SqlalchemyAsyncSession):
         value: _GeneratorContextManager[dict[Any, BaseTransmuter]],
     ) -> None:
         self.sync_session._validation_context_manager = value
+
+    async def one(
+        self,
+        entity: type[T],
+        options: Iterable[ExecutableOption] | None = None,
+        expressions: Iterable[ExpressionType] | None = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        **filters,
+    ):
+        return await util.greenlet_spawn(
+            self.sync_session.one,
+            entity,
+            options,
+            expressions,
+            execution_options,
+            **filters,
+        )
+
+    async def one_or_none(
+        self,
+        entity: type[T],
+        options: Iterable[ExecutableOption] | None = None,
+        expressions: Iterable[ExpressionType] | None = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        **filters,
+    ):
+        return await util.greenlet_spawn(
+            self.sync_session.one_or_none,
+            entity,
+            options,
+            expressions,
+            execution_options,
+            **filters,
+        )
+
+    async def first(
+        self,
+        entity: type[T],
+        order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
+        options: Iterable[ExecutableOption] | None = None,
+        expressions: Iterable[ExpressionType] | None = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        **filters,
+    ):
+        return await util.greenlet_spawn(
+            self.sync_session.first,
+            entity,
+            order_bys,
+            options,
+            expressions,
+            execution_options,
+            **filters,
+        )
+
+    async def bulk(
+        self,
+        entity: type[T],
+        idents: Sequence[_PKIdentityArgument],
+        *,
+        options: Sequence[ORMOption] | None = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+    ) -> list[T | None]:
+        return await util.greenlet_spawn(
+            self.sync_session.bulk,
+            entity,
+            idents,
+            options=options,
+            execution_options=execution_options,
+        )
+
+    async def count(
+        self,
+        entity: type[T],
+        expressions: Iterable[ExpressionType] | None = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        **filters,
+    ):
+        return await util.greenlet_spawn(
+            self.sync_session.count,
+            entity,
+            expressions,
+            execution_options,
+            **filters,
+        )
+
+    async def list(
+        self,
+        entity: type[T],
+        limit: int | None = 100,
+        offset: int | None = None,
+        order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
+        options: Iterable[ExecutableOption] | None = None,
+        expressions: Iterable[ExpressionType] | None = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        **filters,
+    ):
+        return await util.greenlet_spawn(
+            self.sync_session.list,
+            entity,
+            limit,
+            offset,
+            order_bys,
+            options,
+            expressions,
+            execution_options,
+            **filters,
+        )

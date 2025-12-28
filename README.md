@@ -162,6 +162,8 @@ with Session(engine) as session:
     session.commit()
 ```
 
+
+
 ### Partial Models for Create/Update Operations
 
 Arcanum provides `Create` and `Update` partial model helpers, useful for APIs.
@@ -305,6 +307,88 @@ with Session(engine) as session:
         for foo in partition:
             process(foo)
 ```
+
+
+### Async Support
+
+Arcanum supports asynchronous operations using SQLAlchemy's async engine with any async driver. When working with async code, use `arcanum.database.AsyncSession` instead of the original `sqlalchemy.ext.asyncio.AsyncSession`.
+
+The overall usage is the same as the sync one, except you use `AsyncSession` and await async operations. All query patterns, helper methods, and relationship handling work identically.
+
+```python
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+from arcanum.database import AsyncSession
+
+# Create async engine with asyncpg driver
+async_engine = create_async_engine(
+    "postgresql+asyncpg://user:password@localhost/dbname",
+    echo=True
+)
+
+# Use AsyncSession for all operations
+async with AsyncSession(async_engine, expire_on_commit=True) as session:
+    # Query
+    stmt = select(Foo).where(Foo["id"] == 1)
+    result = await session.execute(stmt)
+    foo = result.scalars().one()
+    
+    # Insert
+    new_foo = Foo(name="Async Foo")
+    session.add(new_foo)
+    await session.flush()
+    await session.commit()
+    
+    # Update
+    stmt = update(Foo).where(Foo["id"] == 1).values(name="Updated").returning(Foo)
+    result = await session.execute(stmt)
+    updated_foo = result.scalars().one()
+```
+
+All helper methods are also available in async form:
+
+```python
+async with AsyncSession(async_engine, expire_on_commit=True) as session:
+    # Get by primary key
+    foo = await session.get_one(Foo, 1)
+    
+    # Query with filters
+    foo = await session.one(Foo, name="My Foo")
+    
+    # List with pagination
+    foos = await session.list(Foo, limit=10, offset=20)
+    
+    # Count
+    total = await session.count(Foo)
+```
+
+#### Lazy Loading Relationships in Async Context
+
+Following SQLAlchemy's behavior, implicit I/O operations like lazy-loading relationships are not allowed in async contexts. You must explicitly await relationship loading before accessing the values.
+
+To load relationships, await the `Relation` or `RelationCollection` object first, then access the value, or set the loading strategy in orm to "selectin" to make everything work.
+
+```python
+async with AsyncSession(async_engine) as session:
+    foo = await session.get_one(Foo, 1)
+    
+    # For RelationCollection (one-to-many)
+    # Must await to load the collection first
+    await foo.bars  # Load the relationship
+    for bar in foo.bars:  # Now safe to iterate
+        print(bar.data)
+    
+    # For Relation (many-to-one)
+    # Get a bar instance
+    bar = await session.get_one(Bar, 1)
+    
+    # Await loads the relationship and returns the inner value directly
+    parent_foo = await bar.foo  # Returns Foo object, no need for .value
+    assert parent_foo.id == bar.foo_id
+```
+
+**Syntactic Sugar:**
+- `await bar.foo` directly returns the related `Foo` object (no need to access `.value`)
+- `await foo.bars` returns the loaded `RelationCollection` itself, which you can then iterate over
 
 
 
