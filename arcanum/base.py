@@ -276,6 +276,7 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             # use an object instead to keep the behavior same with pydantic's original model_validate
             # with from_attributes=True which will skip the instance __init__.
             loaded = LoadedData()
+            loaded_attrs = loaded.__dict__
 
             # Get all loaded attributes from sqlalchemy orm instance
             for field_name, info in cls.model_fields.items():
@@ -284,10 +285,10 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
                     attr = inspector.attrs[used_name]
                     # skip unloaded attributes to prevent pydantic
                     # from firing the loadings on all lazy attributes in orm
-                    setattr(loaded, used_name, attr.loaded_value)
+                    loaded_attrs[used_name] = attr.loaded_value
                 else:
                     # hybrid attrs maybe
-                    setattr(loaded, used_name, LoaderCallableStatus.NO_VALUE)
+                    loaded_attrs[used_name] = LoaderCallableStatus.NO_VALUE
 
             instance = handler(loaded)
             instance.__provided__ = data
