@@ -191,7 +191,7 @@ class Association(Generic[A], ABC):
 
 class Relation(Association[Optional_T]):
     # new item and loaded item are shared the __payloads__ here
-    __payloads__: Optional_T | None
+    __payloads__: Optional_T
 
     @classmethod
     def __get_pydantic_generic_schema__(
@@ -267,7 +267,7 @@ class Relation(Association[Optional_T]):
 
         return wrapper
 
-    def _load(self) -> Optional_T | None:
+    def _load(self) -> Optional_T:
         # maybe during deepcopy from field default, or the relationship is already loaded
         if not self.__instance__ or self.__loaded__:
             return self.__payloads__
@@ -286,7 +286,7 @@ class Relation(Association[Optional_T]):
 
     @property
     @ensure_loaded
-    def value(self) -> Optional_T | None:
+    def value(self) -> Optional_T:
         return self.__payloads__
 
     @value.setter

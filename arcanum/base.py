@@ -6,7 +6,6 @@ from contextvars import ContextVar
 from typing import (
     TYPE_CHECKING,
     Any,
-    ClassVar,
     Optional,
     Self,
     TypeVar,
@@ -228,8 +227,6 @@ class TransmuterMetaclass(ModelMetaclass):
 
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
-    model_config: ClassVar[ConfigDict] = ConfigDict(from_attributes=True)
-
     _revalidating: bool = PrivateAttr(default=False)
     __provided__: Any = NoInitField(init=False)
 

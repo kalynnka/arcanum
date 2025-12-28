@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING, Any, Generic, Optional, Self, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Optional, Self, TypeVar
 
 from pydantic import ValidationInfo
 from sqlalchemy.util import defaultdict
@@ -81,12 +81,18 @@ class BaseMateria:
 
 
 class NoOpMateria(BaseMateria):
-    _instance: Optional[NoOpMateria] = None
+    _instance: ClassVar[Optional[NoOpMateria]] = None
+    _initialized: ClassVar[bool] = False
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
+
+    def __init__(self) -> None:
+        if not NoOpMateria._initialized:
+            super().__init__()
+            NoOpMateria._initialized = True
 
     def bless(self):
         def decorator(transmuter_cls: TM) -> TM:
