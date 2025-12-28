@@ -125,7 +125,7 @@ class Session(SqlalchemySession):
         bind_arguments: Optional[_BindArguments] = None,
         _parent_execute_state: Optional[Any] = None,
         _add_event: Optional[Any] = None,
-    ) -> Result[Any] | AdaptedResult[Any]:
+    ) -> Result[Any]:
         result = super().execute(
             statement,
             params,
@@ -143,7 +143,7 @@ class Session(SqlalchemySession):
                 real_result=result,
                 adapter=get_cached_adapter(tuple[*entities]),
                 scalar_adapter=get_cached_adapter(entities[0]),
-            )
+            )  # pyright: ignore[reportReturnType]
 
         return result
 
@@ -194,7 +194,6 @@ class Session(SqlalchemySession):
         bind_arguments: Optional[_BindArguments] = None,
         **kw: Any,
     ) -> ScalarResult[_T]: ...
-
     @overload
     def scalars(
         self,

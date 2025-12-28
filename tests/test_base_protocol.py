@@ -31,11 +31,7 @@ def test_bless_foo_into_protocol(foo_with_bar: Foo, engine: Engine):
 
 
 def test_column_expression(engine: Engine, foo_with_bar: Foo):
-    from sqlalchemy.inspection import inspect
-
-    insp1 = inspect(Foo.__provider__)
     stmt = select(Foo).where(Foo["id"] == foo_with_bar.id)
-    stmt_i = insert(Foo).values(name="New Foo").returning(Foo)
     with Session(engine) as session:
         result = session.execute(stmt)
         foo = result.scalars().one()
@@ -151,7 +147,7 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
         )
 
 
-def test_adapted_delete(engine: Engine, foo_with_bar: Foo):
+def test_adapted_delete(engine: Engine):
     with Session(engine) as session:
         # Create another foo to delete
         new_foo = Foo(name="To Be Deleted")
