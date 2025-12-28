@@ -117,14 +117,6 @@ with Session(engine) as session:
     # Get single objects by primary key
     foo = session.get_one(Foo, 1)
 
-# Access relationships
-with Session(engine) as session:
-    foo = session.get_one(Foo, 1)
-    
-    for bar in foo.bars:
-        print(bar.data)
-        print(bar.foo.value)  # Access parent via Relation
-
 # Insert with returning
 with Session(engine) as session:
     stmt = insert(Foo).values(name="New Foo").returning(Foo)
@@ -151,7 +143,7 @@ with Session(engine) as session:
 
 ### Partial Models for Create/Update Operations
 
-Arcanum provides `Create` and `Update` partial model helpers:
+Arcanum provides `Create` and `Update` partial model helpers, useful for APIs.
 
 ```python
 # Create partial (excludes identity fields)
