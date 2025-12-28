@@ -117,11 +117,24 @@ with Session(engine) as session:
     # Get single objects by primary key
     foo = session.get_one(Foo, 1)
 
+# Insert without returning
+with Session(engine) as session:
+    stmt = insert(Foo).values(name="New Foo")
+    session.execute(stmt)
+    session.commit()
+
 # Insert with returning
 with Session(engine) as session:
     stmt = insert(Foo).values(name="New Foo").returning(Foo)
     result = session.execute(stmt)
     new_foo = result.scalars().one()
+    session.commit()
+
+# Update without returning
+with Session(engine) as session:
+    stmt = update(Foo).where(Foo["id"] == 1).values(name="Updated Foo")
+    session.execute(stmt)
+    session.commit()
 
 # Update with returning
 with Session(engine) as session:
@@ -133,12 +146,20 @@ with Session(engine) as session:
     )
     result = session.execute(stmt)
     updated_foo = result.scalars().one()
+    session.commit()
+
+# Delete without returning
+with Session(engine) as session:
+    stmt = delete(Foo).where(Foo["id"] == 1)
+    session.execute(stmt)
+    session.commit()
 
 # Delete with returning
 with Session(engine) as session:
     stmt = delete(Foo).where(Foo["id"] == 1).returning(Foo)
     result = session.execute(stmt)
     deleted_foo = result.scalars().one()
+    session.commit()
 ```
 
 ### Partial Models for Create/Update Operations
