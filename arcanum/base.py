@@ -14,6 +14,7 @@ from typing import (
     get_origin,
     get_type_hints,
 )
+from weakref import WeakValueDictionary
 
 from pydantic import (
     BaseModel,
@@ -37,12 +38,14 @@ M = TypeVar("M", bound="TransmuterMetaclass")
 class LoadedData: ...
 
 
-validated: ContextVar[dict[Any, BaseTransmuter]] = ContextVar("validated", default={})
+validated: ContextVar[WeakValueDictionary[Any, BaseTransmuter]] = ContextVar(
+    "validated", default=WeakValueDictionary()
+)
 
 
 @contextlib.contextmanager
 def validation_context():
-    context: dict[Any, BaseTransmuter] = {}
+    context: WeakValueDictionary[Any, BaseTransmuter] = WeakValueDictionary()
     token = validated.set(context)
     try:
         yield context

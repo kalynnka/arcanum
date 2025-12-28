@@ -9,7 +9,6 @@ from typing import (
     Any,
     Callable,
     Concatenate,
-    Generator,
     Generic,
     Iterable,
     Literal,
@@ -27,20 +26,16 @@ from typing import (
 
 from pydantic import GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import core_schema
-from sqlalchemy import inspect, select
+from sqlalchemy import Insert, Select, inspect
 from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
-from sqlalchemy.ext.associationproxy import AssociationProxyInstance
 from sqlalchemy.orm import (
     InstrumentedAttribute,
     LoaderCallableStatus,
     WriteOnlyCollection,
-    selectinload,
 )
 from sqlalchemy.orm.collections import InstrumentedList
-from sqlalchemy.sql import functions
 from sqlalchemy.util import greenlet_spawn
 
-from arcanum.expression import Column, Expression
 from arcanum.utils import get_cached_adapter
 
 if TYPE_CHECKING:
@@ -70,18 +65,6 @@ def is_association(t: type) -> bool:
         arg = type(get_args(t)[0])
 
     return issubclass(arg, Association)
-
-
-def eager_load(*columns: Column, recursion_depth: int | None = None):
-    return [
-        selectinload(
-            column.inner.local_attr
-            if isinstance(column.inner, AssociationProxyInstance)
-            else column.inner,  # pyright: ignore[reportArgumentType]
-            recursion_depth=recursion_depth,
-        )
-        for column in columns
-    ]
 
 
 class Association(Generic[A], ABC):
@@ -622,7 +605,7 @@ class PassiveRelationCollection(RelationCollection[T]):
         return [] if value is LoaderCallableStatus.NO_VALUE else value
 
     @cached_property
-    def __provided__(self) -> WriteOnlyCollection:
+    def __provided__(self) -> WriteOnlyCollection[T]:
         if not self.__instance__:
             raise RuntimeError(
                 f"The relation '{self.field_name}' is not yet prepared with an owner instance."
@@ -637,33 +620,6 @@ class PassiveRelationCollection(RelationCollection[T]):
             )
         return inspect(self.__instance__.__provided__).session
 
-    @property
-    def __loaded__(self) -> int:
-        return super().__len__()
-
-    def __iter__(self):
-        for scalar in (
-            self.__session__.execute(
-                self.__provided__.select().execution_options(yield_per=1)
-            )
-            .scalars()
-            .yield_per(self.batch_size)
-        ):
-            yield self.validate_python(scalar)
-
-    def __len__(self) -> int:
-        statement = self.__provided__.select().with_only_columns(functions.count())
-        return self.__session__.execute(statement).scalar_one()
-
-    def __contains__(self, key: T) -> bool:
-        raise NotImplementedError(
-            "Contain check on PassiveRelationCollection is not supported yet. Blocked by pk mapping in between."
-        )
-
-    def __bool__(self) -> bool:
-        statement = self.__provided__.select().with_only_columns(functions.count())
-        return self.__session__.execute(statement).scalar_one() > 0
-
     def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
         if self.__payloads__:
@@ -675,95 +631,14 @@ class PassiveRelationCollection(RelationCollection[T]):
                 self.append(item)
         self.__payloads__ = None
 
-    def list(
-        self,
-        limit: int | None = None,
-        offset: int | None = None,
-        # cursor: Any | None = None, # TODO: implement cursor pagination after pk mapping is ready
-        order_bys: Iterable[Column] | None = None,
-        expression: Expression | None = None,
-        eager_loads: Iterable[Column] | None = None,
-        **filters: Any,
-    ) -> list[T]:
-        statement = self.__provided__.select()
-        if limit:
-            statement = statement.limit(limit)
-        if offset:
-            statement = statement.offset(offset)
-        if order_bys is not None:
-            for order_by in order_bys:
-                statement = statement.order_by(order_by())
-        if filters:
-            statement = statement.filter_by(**filters)
-        if expression is not None:
-            statement = statement.where(expression())
-        if eager_loads is not None:
-            statement = statement.options(*eager_load(*eager_loads))
+    def select(self) -> Select[tuple[T]]:
+        return self.__provided__.select()
 
-        scalars = self.__session__.execute(statement).scalars().all()
-        return self.validate_python(scalars)
+    def insert(self) -> Insert:
+        return self.__provided__.insert()
 
-    def partitions(
-        self,
-        limit: int | None = None,
-        offset: int | None = None,
-        # cursor: Any | None = None, # TODO: implement cursor pagination after pk mapping is ready
-        order_bys: Iterable[Column] | None = None,
-        size: int | None = None,
-        expression: Expression | None = None,
-        eager_loads: Iterable[Column] | None = None,
-        **filters: Any,
-    ) -> Generator[Iterable[T], None, None]:
-        statement = self.__provided__.select().execution_options(
-            yield_per=size or self.batch_size
-        )
-        if limit:
-            statement = statement.limit(limit)
-        if offset:
-            statement = statement.offset(offset)
-        if order_bys:
-            for order_by in order_bys:
-                statement = statement.order_by(order_by())
-        if filters:
-            statement = statement.filter_by(**filters)
-        if expression:
-            statement = statement.where(expression())
-        if eager_loads:
-            statement = statement.options(*eager_load(*eager_loads))
+    def update(self) -> Any:
+        return self.__provided__.update()
 
-        for partition in (
-            self.__session__.execute(statement)
-            .scalars()
-            .partitions(size=size or self.batch_size)
-        ):
-            yield self.validate_python(partition)
-
-    def append(self, object: T):
-        value = self.validate_python(object)
-        self.__provided__.add(value.__provided__)
-
-    def extend(self, iterable: Iterable[T]):
-        iterable = self.validate_python(iterable)
-        self.__session__.execute(
-            self.__provided__.insert().values([item.__provided__ for item in iterable])
-        )
-
-    def clear(self):
-        self.__session__.execute(self.__provided__.delete())
-
-    def count(
-        self,
-        expression: Expression | None = None,
-        **filters,
-    ) -> int:
-        statement = self.__provided__.select()
-        if expression is not None:
-            statement = statement.where(expression())
-        if filters:
-            statement = statement.filter_by(**filters)
-        statement = select(functions.count()).select_from(statement.subquery())
-        return self.__session__.execute(statement).scalar_one()
-
-    def remove(self, value: T):
-        item = self.validate_python(value)
-        self.__provided__.remove(item.__provided__)
+    def delete(self) -> Any:
+        return self.__provided__.delete()

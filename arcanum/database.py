@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Self, Sequence, TypeVar, overload
+from weakref import WeakValueDictionary
 
 from sqlalchemy import exc, inspect, tuple_, util
 from sqlalchemy.engine.cursor import CursorResult
@@ -53,8 +54,10 @@ def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
 
 
 class Session(SqlalchemySession):
-    _validation_context: dict[Any, BaseTransmuter] | None
-    _validation_context_manager: _GeneratorContextManager[dict[Any, BaseTransmuter]]
+    _validation_context: WeakValueDictionary[Any, BaseTransmuter] | None
+    _validation_context_manager: _GeneratorContextManager[
+        WeakValueDictionary[Any, BaseTransmuter]
+    ]
 
     def __enter__(self):
         self._validation_context_manager = validation_context()
@@ -523,23 +526,25 @@ class AsyncSession(SqlalchemyAsyncSession):
         await super().__aexit__(type_, value, traceback)
 
     @property
-    def _validation_context(self) -> dict[Any, BaseTransmuter] | None:
+    def _validation_context(self) -> WeakValueDictionary[Any, BaseTransmuter] | None:
         return self.sync_session._validation_context
 
     @_validation_context.setter
-    def _validation_context(self, value: dict[Any, BaseTransmuter] | None) -> None:
+    def _validation_context(
+        self, value: WeakValueDictionary[Any, BaseTransmuter] | None
+    ) -> None:
         self.sync_session._validation_context = value
 
     @property
     def _validation_context_manager(
         self,
-    ) -> _GeneratorContextManager[dict[Any, BaseTransmuter]]:
+    ) -> _GeneratorContextManager[WeakValueDictionary[Any, BaseTransmuter]]:
         return self.sync_session._validation_context_manager
 
     @_validation_context_manager.setter
     def _validation_context_manager(
         self,
-        value: _GeneratorContextManager[dict[Any, BaseTransmuter]],
+        value: _GeneratorContextManager[WeakValueDictionary[Any, BaseTransmuter]],
     ) -> None:
         self.sync_session._validation_context_manager = value
 
