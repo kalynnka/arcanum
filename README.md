@@ -93,9 +93,19 @@ from arcanum.database import Session
 # Create and add objects
 with Session(engine) as session:
     foo = Foo(name="My Foo")
-    bar = Bar(data="My Bar", foo=Relation(foo))
+    bar = Bar(data="Child Bar", foo=Relation(foo))
     session.add(bar)
     session.flush()
+    
+    # Sync server-generated values (like autoincrement IDs) to transmuter
+    # For dialects that support RETURNING (PostgreSQL, SQLite, etc.):
+    foo.revalidate()  # Syncs ORM state to transmuter, no extra query
+    bar.revalidate()
+    
+    # For dialects without RETURNING support (MySQL 😒):
+    # session.refresh(foo)  # Issues additional SELECT statements
+    # session.refresh(bar)
+    
     session.commit()
 
 # Query using schemas directly in SQLAlchemy statements
@@ -110,7 +120,6 @@ with Session(engine) as session:
 # Access relationships
 with Session(engine) as session:
     foo = session.get_one(Foo, 1)
-    foo.revalidate()  # Load relationships
     
     for bar in foo.bars:
         print(bar.data)
@@ -118,7 +127,7 @@ with Session(engine) as session:
 
 # Insert with returning
 with Session(engine) as session:
-    stmt = insert(Foo).values(name="New Foo").returning(Foo, Foo["id"])
+    stmt = insert(Foo).values(name="New Foo").returning(Foo)
     result = session.execute(stmt)
     new_foo = result.scalars().one()
 
@@ -132,7 +141,6 @@ with Session(engine) as session:
     )
     result = session.execute(stmt)
     updated_foo = result.scalars().one()
-    updated_foo.revalidate()  # Sync transmuter with ORM state
 
 # Delete with returning
 with Session(engine) as session:
