@@ -103,8 +103,8 @@ with Session(engine) as session:
     bar.revalidate()
     
     # For dialects without RETURNING support (MySQL 😒):
-    # session.refresh(foo)  # Issues additional SELECT statements
-    # session.refresh(bar)
+    session.refresh(foo)  # Issues additional SELECT statements
+    session.refresh(bar)
     
     session.commit()
 
