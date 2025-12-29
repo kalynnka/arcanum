@@ -4,10 +4,6 @@ from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Self, Sequence, TypeVar, overload
 from weakref import WeakValueDictionary
 
-from arcanum.base import BaseTransmuter, validation_context
-from arcanum.expression import Expression
-from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
-from arcanum.utils import get_cached_adapter
 from sqlalchemy import exc, inspect, tuple_, util
 from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
@@ -25,6 +21,11 @@ from sqlalchemy.sql._typing import (
 from sqlalchemy.sql.base import ExecutableOption
 from sqlalchemy.sql.dml import Delete, Insert, Update, UpdateBase
 from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedReturnsRows
+
+from arcanum.base import BaseTransmuter, validation_context
+from arcanum.expression import Expression
+from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
+from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
 
@@ -267,9 +268,10 @@ class Session(SqlalchemySession):
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
     ) -> Optional[T]:
-        if isinstance(entity, BaseTransmuter):
+        if isinstance(entity, type) and issubclass(entity, BaseTransmuter):
             instance = super().get(
-                entity.__transmuter_provider__,
+                # sqlalchemy materia requires transumter to have a provider blessed
+                entity.__transmuter_provider__,  # pyright: ignore[reportArgumentType]
                 ident,
                 options=options,
                 populate_existing=populate_existing,
