@@ -15,7 +15,7 @@ from arcanum.association import (
     Relationship,
     Relationships,
 )
-from arcanum.base import BaseTransmuter
+from arcanum.base import BaseTransmuter, validation_context
 from arcanum.materia.base import NoOpMateria
 
 __all__ = [
@@ -25,4 +25,5 @@ __all__ = [
     "Relationship",
     "Relationships",
     "NoOpMateria",
+    "validation_context",
 ]
