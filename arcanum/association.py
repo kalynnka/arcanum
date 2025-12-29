@@ -98,6 +98,10 @@ class Association(Generic[A], ABC):
         generic_type: Type[A],
         handler: GetCoreSchemaHandler,
     ) -> core_schema.SerSchema | None:
+        # TODO: Implement automatic circular reference detection in serialization.
+        # Currently, circular references must be manually excluded using the exclude
+        # parameter. Pydantic does not provide built-in cycle detection.
+        # See: https://docs.pydantic.dev/latest/concepts/serialization/
         raise NotImplementedError()
 
     @classmethod
