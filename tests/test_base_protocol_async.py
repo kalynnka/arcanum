@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from arcanum.database import AsyncSession
+from arcanum.materia.sqlalchemy import AsyncSession
 from tests import models
 from tests.schemas import Author, Book, BookDetail, Category, Publisher
 

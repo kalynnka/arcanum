@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from arcanum.association import Relation, RelationCollection
-from arcanum.database import AsyncSession
+from arcanum.materia.sqlalchemy import AsyncSession
 from tests.models import Base
 from tests.schemas import (
     Author,

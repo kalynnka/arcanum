@@ -9,6 +9,20 @@ __version__ = "0.1.0"
 __author__ = "arcanum"
 __email__ = "arcanum@example.com"
 
+from arcanum.association import (
+    Relation,
+    RelationCollection,
+    Relationship,
+    Relationships,
+)
 from arcanum.base import BaseTransmuter
+from arcanum.materia.base import NoOpMateria
 
-__all__ = ["BaseTransmuter"]
+__all__ = [
+    "BaseTransmuter",
+    "Relation",
+    "RelationCollection",
+    "Relationship",
+    "Relationships",
+    "NoOpMateria",
+]

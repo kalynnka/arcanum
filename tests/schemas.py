@@ -11,7 +11,7 @@ from arcanum.association import (
     Relationships,
 )
 from arcanum.base import BaseTransmuter, Identity
-from arcanum.materia.sqlalchemy import SqlalchemyMateria
+from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
 from tests import models
 
 sqlalchemy_materia = SqlalchemyMateria()

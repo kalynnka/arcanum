@@ -4,6 +4,10 @@ from contextlib import _GeneratorContextManager
 from typing import Any, Iterable, Optional, Self, Sequence, TypeVar, overload
 from weakref import WeakValueDictionary
 
+from arcanum.base import BaseTransmuter, validation_context
+from arcanum.expression import Expression
+from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
+from arcanum.utils import get_cached_adapter
 from sqlalchemy import exc, inspect, tuple_, util
 from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
@@ -21,11 +25,6 @@ from sqlalchemy.sql._typing import (
 from sqlalchemy.sql.base import ExecutableOption
 from sqlalchemy.sql.dml import Delete, Insert, Update, UpdateBase
 from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedReturnsRows
-
-from arcanum.base import BaseTransmuter, validation_context
-from arcanum.expression import Expression
-from arcanum.result import _T, AdaptedResult
-from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
 
@@ -268,17 +267,29 @@ class Session(SqlalchemySession):
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
     ) -> Optional[T]:
-        instance = super().get(
-            entity.__transmuter_provider__,
-            ident,
-            options=options,
-            populate_existing=populate_existing,
-            with_for_update=with_for_update,
-            identity_token=identity_token,
-            execution_options=execution_options,
-            bind_arguments=bind_arguments,
-        )
-        return entity.model_validate(instance) if instance else None
+        if isinstance(entity, BaseTransmuter):
+            instance = super().get(
+                entity.__transmuter_provider__,
+                ident,
+                options=options,
+                populate_existing=populate_existing,
+                with_for_update=with_for_update,
+                identity_token=identity_token,
+                execution_options=execution_options,
+                bind_arguments=bind_arguments,
+            )
+            return entity.model_validate(instance) if instance else None
+        else:
+            return super().get(
+                entity,
+                ident,
+                options=options,
+                populate_existing=populate_existing,
+                with_for_update=with_for_update,
+                identity_token=identity_token,
+                execution_options=execution_options,
+                bind_arguments=bind_arguments,
+            )
 
     def get_one(
         self,
@@ -392,7 +403,7 @@ class Session(SqlalchemySession):
             return []
 
         mapper = inspect(entity.__transmuter_provider__)
-        pk_columns = mapper.primary_key
+        pk_columns = mapper.primary_key  # pyright: ignore[reportOptionalMemberAccess]
 
         if len(pk_columns) == 1:
             # Build the WHERE clause based on single or composite PK

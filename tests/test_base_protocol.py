@@ -1,6 +1,6 @@
 from sqlalchemy import Engine, delete, insert, select, update
 
-from arcanum.database import Session
+from arcanum.materia.sqlalchemy import Session
 from tests import models
 from tests.schemas import Author, Book, BookDetail, Category, Publisher
 

@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
     from arcanum.base import BaseTransmuter
-    from arcanum.database import Session
+    from arcanum.materia.sqlalchemy.database import Session
 
 A = TypeVar("A")
 T = TypeVar("T", bound="BaseTransmuter")
