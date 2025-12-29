@@ -47,12 +47,6 @@ class AdaptedCommon(FilterResult[_R]):
 
     @property
     def closed(self) -> bool:
-        """proxies the .closed attribute of the underlying result object,
-        if any, else raises ``AttributeError``.
-
-        .. versionadded:: 2.0.0b3
-
-        """
         return self._real_result.closed
 
 

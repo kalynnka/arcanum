@@ -19,7 +19,7 @@ class Foo(BaseTransmuter):
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
     name: str
-    bars: RelationCollection[Bar] = Field(default=RelationCollection())
+    bars: RelationCollection[Bar] = RelationCollection()
 
 
 @sqlalchemy_materia.bless(BarModel)
@@ -30,4 +30,4 @@ class Bar(BaseTransmuter):
     data: str
     foo_id: int | None = None
 
-    foo: Relation[Foo] = Field(default=Relation())
+    foo: Relation[Foo] = Relation()

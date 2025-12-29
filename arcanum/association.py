@@ -66,7 +66,6 @@ def is_association(t: type) -> bool:
 
 
 class Association(Generic[A], ABC):
-    __args__: tuple[A, ...]
     __generic__: Type[A]
     __instance__: BaseTransmuter | None
     __loaded__: bool
@@ -131,27 +130,22 @@ class Association(Generic[A], ABC):
                 instance = cls.__new__(cls)
                 instance.__init__()
                 instance.__payloads__ = handler(value)
-            instance.__args__ = args
             instance.__generic__ = generic_type
             instance.field_name = info.field_name
             instance = instance.__pydantic_after_validator__(info)
 
             return instance
 
-        schema = core_schema.chain_schema(
-            [
-                core_schema.with_info_wrap_validator_function(
-                    validate,
-                    cls.__get_pydantic_generic_schema__(generic_type, handler),
-                    field_name=handler.field_name,
-                ),
-                core_schema.is_instance_schema(cls),
-            ],
-        )
         return core_schema.with_default_schema(
-            core_schema.json_or_python_schema(
-                json_schema=schema,
-                python_schema=schema,
+            core_schema.chain_schema(
+                [
+                    core_schema.with_info_wrap_validator_function(
+                        validate,
+                        cls.__get_pydantic_generic_schema__(generic_type, handler),
+                        field_name=handler.field_name,
+                    ),
+                    core_schema.is_instance_schema(cls),
+                ],
             ),
             default=cls(),
             validate_default=True,
@@ -190,8 +184,12 @@ class Association(Generic[A], ABC):
     def prepare(self, instance: BaseTransmuter, field_name: str):
         if self.__instance__ is not None:
             return
-        self.__instance__ = instance
+
         self.field_name = field_name
+        self.field_info = type(instance).model_fields[field_name]
+
+        self.__instance__ = instance
+        self.__generic__ = get_args(self.field_info.annotation)[0]
 
     def validate_python(self, value: Any) -> A:
         """Validate the value against the type adapter."""
@@ -242,6 +240,7 @@ class Relation(Association[Optional_T]):
         if not self.__instance_provider__:
             return None
         try:
+            # TODO: provider not exist, or the provided value is None both return None
             return getattr(self.__instance_provider__, self.used_name)
         except MissingGreenlet as missing_greenlet_error:
             self.__loaded__ = False
@@ -313,16 +312,15 @@ class Relation(Association[Optional_T]):
     @value.setter
     @ensure_loaded
     def value(self, object: Optional_T):
-        # Set payloads to provider if exists
-        if self.__provided__:
-            object = self.validate_python(object)
-            if object is not None:
-                self.__provided__ = object.__transmuter_provided__
-            else:
-                self.__provided__ = None
+        object = self.validate_python(object)
+        if object is not None:
+            self.__provided__ = object.__transmuter_provided__
+        else:
+            self.__provided__ = None
         self.__payloads__ = object
 
 
+# built-in types must be put at front to avoid pydantic convert it to built-in types
 class RelationCollection(list[T], Association[T]):
     # new items are held in __payloads__, loaded items are kept in the list itself
     __payloads__: list[T]

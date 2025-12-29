@@ -13,7 +13,7 @@ from arcanum.materia.base import NoOpMateria
 class Author(BaseTransmuter):
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
     name: str
-    books: RelationCollection[Book] = Field(default=RelationCollection())
+    books: RelationCollection[Book] = RelationCollection()
 
 
 class Book(BaseTransmuter):
@@ -21,7 +21,7 @@ class Book(BaseTransmuter):
     title: str
     isbn: str
     author_id: int | None = None
-    author: Relation[Author] = Field(default=Relation())
+    author: Relation[Author] = Relation()
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -215,12 +215,16 @@ def test_noop_materia_mixed_attributes():
 
 def test_noop_materia_relation_collection_initialization():
     """Test RelationCollection initialization with data"""
-    books = [
-        Book(id=1, title="Book 1", isbn="ISBN-1", author_id=1),
-        Book(id=2, title="Book 2", isbn="ISBN-2", author_id=1),
-    ]
-
-    author = Author(id=1, name="Test Author", books=RelationCollection(books))
+    author = Author(
+        id=1,
+        name="Test Author",
+        books=RelationCollection(
+            [
+                Book(id=1, title="Book 1", isbn="ISBN-1", author_id=1),
+                Book(id=2, title="Book 2", isbn="ISBN-2", author_id=1),
+            ]
+        ),
+    )
 
     # Should have the books from initialization
     assert len(author.books) == 2
