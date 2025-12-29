@@ -47,10 +47,11 @@ class TestCreateModel:
             publisher_id=2,
         )
 
-        assert partial.title == "Test Book"
-        assert partial.year == 2024
-        assert partial.author_id == 1
-        assert partial.publisher_id == 2
+        data = partial.model_dump(exclude_none=True)
+        assert data["title"] == "Test Book"
+        assert data["year"] == 2024
+        assert data["author_id"] == 1
+        assert data["publisher_id"] == 2
 
     def test_create_model_requires_non_optional_fields(self):
         """Test that Create model still validates required fields."""
@@ -309,8 +310,8 @@ class TestModelMetadata:
 
     def test_model_config(self):
         """Test model configuration."""
-        assert Book.model_config["from_attributes"] is True
-        assert Author.model_config["from_attributes"] is True
+        assert Book.model_config.get("from_attributes") is True
+        assert Author.model_config.get("from_attributes") is True
 
 
 class TestModelInheritance:
@@ -349,7 +350,7 @@ class TestCustomValidation:
 
         # Invalid literal value should fail
         with pytest.raises(ValidationError):
-            Author(name="Test", field="InvalidField")
+            Author(name="Test", field="InvalidField")  # pyright: ignore[reportArgumentType]
 
     def test_model_from_attributes(self):
         """Test model_validate with from_attributes mode."""

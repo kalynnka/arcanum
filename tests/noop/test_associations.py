@@ -144,7 +144,7 @@ class TestRelationValidation:
                 id=1,
                 title="Test",
                 year=2000,
-                author=Relation("not an author"),
+                author=Relation("not an author"),  # pyright: ignore[reportArgumentType]
             )
 
 
