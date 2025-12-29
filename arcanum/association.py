@@ -416,6 +416,9 @@ class RelationCollection(list[T], Association[T]):
     def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
         if self.__payloads__:
+            # manualy enforce loading first to remove duplicates in payloads
+            # objects already assigned to the relationship may be add to payloads during revalidation
+            self._load()
             self.extend(self.__payloads__)
             self.__payloads__.clear()
 
@@ -445,6 +448,13 @@ class RelationCollection(list[T], Association[T]):
         # B: provided value is empty, []
         if not self.__provided__:
             return self
+
+        # TODO: Better way to avoid duplication relationship append ?
+        self.__payloads__ = [
+            payload
+            for payload in self.__payloads__
+            if payload.__transmuter_provided__ not in set(self.__provided__)
+        ]
 
         if not len(self.__provided__) == super().__len__():
             # If the length of __provided__ is not equal to the length of self,
@@ -556,9 +566,10 @@ class RelationCollection(list[T], Association[T]):
     def __ge__(self, other: list[T]):
         return super().__ge__(other)
 
-    @ensure_loaded
+    # @ensure_loaded
     def __repr__(self):
-        return super().__repr__()
+        # return super().__repr__()
+        return f"RelationCollection[{self.__generic__.__name__}], instance={id(self.__instance__)}, size={super().__len__()}"
 
     @ensure_loaded
     def __str__(self):

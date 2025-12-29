@@ -282,6 +282,8 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
                 # if the cached instance is in revalidating state, let it through to sync orm state
                 if not cached._revalidating:
                     return cached
+                else:
+                    cached._revalidating = False
 
             preprocessed = cls.__transmuter_materia__.before_validator(data, info)
             instance = handler(preprocessed)
