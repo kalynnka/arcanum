@@ -219,10 +219,14 @@ class Relation(Association[Optional_T]):
     def __get_pydantic_serialize_schema__(
         cls, generic_type: type[Optional_T], handler: GetCoreSchemaHandler
     ) -> core_schema.SerSchema | None:
-        def serialize(value: Relation[Optional_T]) -> Any:
-            return value.__payloads__
+        def serialize(value: Relation[Optional_T], serializer) -> Any:
+            return serializer(value.__payloads__)
 
-        return core_schema.plain_serializer_function_ser_schema(serialize)
+        return core_schema.wrap_serializer_function_ser_schema(
+            serialize,
+            schema=handler.generate_schema(generic_type),
+            when_used="always",
+        )
 
     @classmethod
     def __pydantic_before_validator__(
@@ -338,12 +342,16 @@ class RelationCollection(list[T], Association[T]):
 
     @classmethod
     def __get_pydantic_serialize_schema__(
-        cls, association: Type[T], handler: GetCoreSchemaHandler
+        cls, generic_type: Type[T], handler: GetCoreSchemaHandler
     ) -> core_schema.SerSchema | None:
-        def serialize(value: RelationCollection[T]) -> Any:
-            return value
+        def serialize(value: RelationCollection[T], serializer) -> Any:
+            return serializer(value.copy())
 
-        return core_schema.plain_serializer_function_ser_schema(serialize)
+        return core_schema.wrap_serializer_function_ser_schema(
+            serialize,
+            schema=core_schema.list_schema(handler.generate_schema(generic_type)),
+            when_used="always",
+        )
 
     @classmethod
     def __pydantic_before_validator__(
