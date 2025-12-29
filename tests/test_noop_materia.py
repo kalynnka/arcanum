@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 import pytest
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from arcanum.association import Relation, RelationCollection
 from arcanum.base import BaseTransmuter, Identity
@@ -20,7 +20,6 @@ class Book(BaseTransmuter):
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
     title: str
     isbn: str
-    author_id: int | None = None
     author: Relation[Author] = Relation()
 
 
@@ -48,7 +47,7 @@ def test_noop_materia_works_as_normal_pydantic_model():
 def test_noop_materia_relation_works_like_normal_attribute():
     """Test that Relation works like a normal attribute"""
     author = Author(id=1, name="George Orwell")
-    book = Book(id=1, title="1984", isbn="978-0451524935", author_id=1)
+    book = Book(id=1, title="1984", isbn="978-0451524935")
 
     # Set relation value
     book.author.value = author
@@ -65,7 +64,7 @@ def test_noop_materia_relation_works_like_normal_attribute():
 
 def test_noop_materia_relation_set_to_none():
     """Test that Relation can be set to None"""
-    book = Book(id=1, title="Animal Farm", isbn="978-0451526342", author_id=None)
+    book = Book(id=1, title="Animal Farm", isbn="978-0451526342")
 
     # Initially None
     assert book.author.value is None
@@ -75,9 +74,12 @@ def test_noop_materia_relation_set_to_none():
     book.author.value = author
     assert book.author.value is not None
 
-    # Set back to None
-    book.author.value = None
-    assert book.author.value is None
+    # Author is not allowed to be None
+    with pytest.raises(ValidationError):
+        book.author.value = None
+
+    book.author.value = Author(id=3, name="Another George Orwell")
+    assert book.author.value.name == "Another George Orwell"
 
 
 def test_noop_materia_relation_collection_works_like_list():
@@ -89,9 +91,9 @@ def test_noop_materia_relation_collection_works_like_list():
     assert isinstance(author.books, RelationCollection)
 
     # Create books
-    book1 = Book(id=1, title="Foundation", isbn="978-0553293357", author_id=1)
-    book2 = Book(id=2, title="I, Robot", isbn="978-0553382563", author_id=1)
-    book3 = Book(id=3, title="The Gods Themselves", isbn="978-0553288100", author_id=1)
+    book1 = Book(id=1, title="Foundation", isbn="978-0553293357")
+    book2 = Book(id=2, title="I, Robot", isbn="978-0553382563")
+    book3 = Book(id=3, title="The Gods Themselves", isbn="978-0553288100")
 
     # Append like a normal list
     author.books.append(book1)
@@ -121,9 +123,9 @@ def test_noop_materia_relation_collection_list_operations():
     """Test more list operations on RelationCollection"""
     author = Author(id=1, name="Frank Herbert")
 
-    book1 = Book(id=1, title="Dune", isbn="978-0441172719", author_id=1)
-    book2 = Book(id=2, title="Dune Messiah", isbn="978-0441172696", author_id=1)
-    book3 = Book(id=3, title="Children of Dune", isbn="978-0441104024", author_id=1)
+    book1 = Book(id=1, title="Dune", isbn="978-0441172719")
+    book2 = Book(id=2, title="Dune Messiah", isbn="978-0441172696")
+    book3 = Book(id=3, title="Children of Dune", isbn="978-0441104024")
 
     author.books.extend([book1, book2, book3])
 
@@ -152,10 +154,7 @@ def test_noop_materia_relation_collection_slicing():
     """Test slicing operations on RelationCollection"""
     author = Author(id=1, name="J.R.R. Tolkien")
 
-    books = [
-        Book(id=i, title=f"Book {i}", isbn=f"ISBN-{i}", author_id=1)
-        for i in range(1, 6)
-    ]
+    books = [Book(id=i, title=f"Book {i}", isbn=f"ISBN-{i}") for i in range(1, 6)]
     author.books.extend(books)
 
     # Get slice
@@ -173,8 +172,8 @@ def test_noop_materia_relation_collection_slicing():
 
     # Set slice
     new_books = [
-        Book(id=10, title="New Book 1", isbn="ISBN-10", author_id=1),
-        Book(id=11, title="New Book 2", isbn="ISBN-11", author_id=1),
+        Book(id=10, title="New Book 1", isbn="ISBN-10"),
+        Book(id=11, title="New Book 2", isbn="ISBN-11"),
     ]
     author.books[1:3] = new_books
     assert len(author.books) == 5
@@ -185,7 +184,7 @@ def test_noop_materia_relation_collection_slicing():
 def test_noop_materia_mixed_attributes():
     """Test mixing normal attributes with relations"""
     author = Author(id=1, name="Arthur C. Clarke")
-    book = Book(id=1, title="2001: A Space Odyssey", isbn="978-0451457998", author_id=1)
+    book = Book(id=1, title="2001: A Space Odyssey", isbn="978-0451457998")
 
     # Set book's author relation
     book.author.value = author
@@ -220,8 +219,8 @@ def test_noop_materia_relation_collection_initialization():
         name="Test Author",
         books=RelationCollection(
             [
-                Book(id=1, title="Book 1", isbn="ISBN-1", author_id=1),
-                Book(id=2, title="Book 2", isbn="ISBN-2", author_id=1),
+                Book(id=1, title="Book 1", isbn="ISBN-1"),
+                Book(id=2, title="Book 2", isbn="ISBN-2"),
             ]
         ),
     )

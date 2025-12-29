@@ -204,13 +204,18 @@ class Relation(Association[Optional_T]):
     def __get_pydantic_generic_schema__(
         cls, generic_type: type[Optional_T], handler: GetCoreSchemaHandler
     ) -> core_schema.CoreSchema:
+        # TODO: strict the validation for lazy-load non-optional single relationship
+        # to fobid the folowing example
+        # class A(BaseTransmuter):
+        #     b: Relation[B] = Relation()
+        # b = B(b=None)  # should raise validation error
         return core_schema.union_schema(
             choices=[
                 handler.generate_schema(generic_type),
                 core_schema.none_schema(),
             ]
         )
-        # TODO: strict the validation for lazy-load non-optional single relationship
+
         # return handler.generate_schema(generic_type)
 
     @classmethod
@@ -465,7 +470,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def __bool__(self):
-        return bool(super())
+        return super().__len__() > 0
 
     @overload
     def __setitem__(self, key: SupportsIndex, value: T) -> None: ...
