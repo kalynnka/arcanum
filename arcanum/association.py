@@ -29,11 +29,9 @@ from pydantic_core import core_schema
 from sqlalchemy import Insert, Select, inspect
 from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
 from sqlalchemy.orm import (
-    InstrumentedAttribute,
     LoaderCallableStatus,
     WriteOnlyCollection,
 )
-from sqlalchemy.orm.collections import InstrumentedList
 from sqlalchemy.util import greenlet_spawn
 
 from arcanum.utils import get_cached_adapter
@@ -160,6 +158,17 @@ class Association(Generic[A], ABC):
             serialization=cls.__get_pydantic_serialize_schema__(generic_type, handler),
         )
 
+    @property
+    def __instance_provider__(self) -> Optional[Any]:
+        """Owner instance' provider, owner of this association's provider."""
+        if self.__instance__ is not None:
+            return self.__instance__.__transmuter_provided__
+        return None
+
+    @property
+    def __provided__(self) -> Any | None:
+        raise NotImplementedError()
+
     @cached_property
     def __validator__(self) -> TypeAdapter[A]:
         return get_cached_adapter(self.__generic__)
@@ -225,13 +234,15 @@ class Relation(Association[Optional_T]):
         return None if value is LoaderCallableStatus.NO_VALUE else value
 
     @property
-    def __provided__(self) -> InstrumentedAttribute[Any]:
+    def __provided__(self) -> Any:
         if not self.__instance__:
             raise RuntimeError(
-                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
+                f"The relation '{self.field_name}' is not yet prepared to be assigned with an owner instance."
             )
+        if not self.__instance_provider__:
+            return None
         try:
-            return getattr(self.__instance__.__provided__, self.used_name)
+            return getattr(self.__instance_provider__, self.used_name)
         except MissingGreenlet as missing_greenlet_error:
             self.__loaded__ = False
             raise RuntimeError(
@@ -249,12 +260,18 @@ class Relation(Association[Optional_T]):
             raise RuntimeError(
                 f"The relation '{self.field_name}' is not yet prepared with an owner instance."
             )
-        setattr(self.__instance__.__provided__, self.used_name, object)
+        if not self.__instance_provider__:
+            return  # No provider, skip syncing
+        setattr(self.__instance_provider__, self.used_name, object)
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
-        if not self.__loaded__ and self.__payloads__ is not None:
-            self.__provided__ = self.__payloads__.__provided__
+        if (
+            self.__instance_provider__
+            and not self.__loaded__
+            and self.__payloads__ is not None
+        ):
+            self.__provided__ = self.__payloads__.__transmuter_provided__
 
     @staticmethod
     def ensure_loaded(
@@ -272,8 +289,12 @@ class Relation(Association[Optional_T]):
         if not self.__instance__ or self.__loaded__:
             return self.__payloads__
 
-        if self.__payloads__ is not None and self.__payloads__.__provided__:
-            self.__provided__ = self.__payloads__.__provided__
+        # No provided, return payloads directly, works as a normal attribute
+        if not self.__provided__:
+            return self.__payloads__
+
+        if self.__payloads__ is not None and self.__payloads__.__transmuter_provided__:
+            self.__provided__ = self.__payloads__.__transmuter_provided__
         else:
             self.__payloads__ = self.validate_python(self.__provided__)
 
@@ -292,16 +313,19 @@ class Relation(Association[Optional_T]):
     @value.setter
     @ensure_loaded
     def value(self, object: Optional_T):
-        object = self.validate_python(object)
-        if object is not None:
-            self.__provided__ = object.__provided__
-        else:
-            self.__provided__ = None
+        # Set payloads to provider if exists
+        if self.__provided__:
+            object = self.validate_python(object)
+            if object is not None:
+                self.__provided__ = object.__transmuter_provided__
+            else:
+                self.__provided__ = None
+        self.__payloads__ = object
 
 
 class RelationCollection(list[T], Association[T]):
     # new items are held in __payloads__, loaded items are kept in the list itself
-    __payloads__: Iterable[T] | None
+    __payloads__: list[T]
 
     @classmethod
     def __get_pydantic_generic_schema__(
@@ -333,10 +357,10 @@ class RelationCollection(list[T], Association[T]):
         super().__init__()
         self.__instance__ = None
         self.__loaded__ = False
-        self.__payloads__ = payloads or []
+        self.__payloads__ = list(payloads) if payloads else []
 
     @cached_property
-    def __provided__(self) -> InstrumentedList[Any]:
+    def __provided__(self) -> list[Any] | None:
         # The return type is something like a list of T_Protocol's provider instances (orm objects),
         # which is actually returned by sqlalchemy's attr descriptor.
 
@@ -344,8 +368,10 @@ class RelationCollection(list[T], Association[T]):
             raise RuntimeError(
                 f"The relation '{self.field_name}' is not yet prepared with an owner instance."
             )
+        if not self.__instance_provider__:
+            return None
         try:
-            return getattr(self.__instance__.__provided__, self.used_name)
+            return getattr(self.__instance__.__transmuter_provided__, self.used_name)
         except MissingGreenlet as missing_greenlet_error:
             self.__loaded__ = False
             raise RuntimeError(
@@ -376,9 +402,9 @@ class RelationCollection(list[T], Association[T]):
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
-        if not self.__loaded__ and self.__payloads__:
+        if self.__payloads__:
             self.extend(self.__payloads__)
-            self.__payloads__ = None
+            self.__payloads__.clear()
 
     @staticmethod
     def ensure_loaded(
@@ -402,9 +428,13 @@ class RelationCollection(list[T], Association[T]):
         if self.__loaded__:
             return self
 
+        # No provided, duck typed as normal list
+        if not self.__provided__:
+            return self
+
         if not len(self.__provided__) == super().__len__():
             # If the length of __provided__ is not equal to the length of self,
-            # it means some items were not blessed into pydantic objects.
+            # it means some items were not blessed into transmuter objects.
             super().clear()
             super().extend(self.validate_python(value=self.__provided__))
 
@@ -447,22 +477,26 @@ class RelationCollection(list[T], Association[T]):
     def __setitem__(self, key: slice, value: T | Iterable[T]):
         if isinstance(value, Iterable):
             items = self.validate_python(value)
-            self.__provided__[key] = [item.__provided__ for item in items]
+            if self.__provided__:
+                self.__provided__[key] = [
+                    item.__transmuter_provided__ for item in items
+                ]
             super().__setitem__(key, items)
         else:
             item = self.validate_python(value)
-            self.__provided__[key] = item.__provided__
+            if self.__provided__:
+                self.__provided__[key] = item.__transmuter_provided__
             super().__setitem__(key, item)
 
     @ensure_loaded
     def __delitem__(self, key: slice):
-        del self.__provided__[key]
+        if self.__provided__:
+            self.__provided__.__delitem__(key)
         super().__delitem__(key)
 
     @ensure_loaded
     def __add__(self, other: Iterable[T]):
-        self.extend(other)
-        return self
+        return self.copy() + self.validate_python(other)
 
     @ensure_loaded
     def __iadd__(self, other: Iterable[T]):
@@ -523,25 +557,32 @@ class RelationCollection(list[T], Association[T]):
     @ensure_loaded
     def append(self, object: T):
         object = self.validate_python(object)
-        self.__provided__.append(
-            object.__provided__ if hasattr(object, "__provided__") else object
-        )
+        if self.__provided__:
+            self.__provided__.append(
+                object.__transmuter_provided__
+                if hasattr(object, "__provided__")
+                else object
+            )
         super().append(object)
 
     @ensure_loaded
     def extend(self, iterable: Iterable[T]):
         iterable = self.validate_python(iterable)
-        self.__provided__.extend(
-            (
-                item.__provided__ if hasattr(item, "__provided__") else item
-                for item in iterable
+        if self.__provided__:
+            self.__provided__.extend(
+                (
+                    item.__transmuter_provided__
+                    if hasattr(item, "__provided__")
+                    else item
+                    for item in iterable
+                )
             )
-        )
         super().extend(iterable)
 
     @ensure_loaded
     def clear(self):
-        self.__provided__.clear()
+        if self.__provided__:
+            self.__provided__.clear()
         super().clear()
 
     @ensure_loaded
@@ -561,19 +602,22 @@ class RelationCollection(list[T], Association[T]):
     @ensure_loaded
     def insert(self, index: SupportsIndex, object: T):
         object = self.validate_python(object)
-        self.__provided__.insert(index, object.__provided__)
+        if self.__provided__:
+            self.__provided__.insert(index, object.__transmuter_provided__)
         super().insert(index, object)
 
     @ensure_loaded
     def pop(self, index: SupportsIndex = -1):
         item = super().pop(index)
-        self.__provided__.remove(item.__provided__)
+        if self.__provided__:
+            self.__provided__.remove(item.__transmuter_provided__)
         return item
 
     @ensure_loaded
     def remove(self, value: T):
         item: T = self.validate_python(value)
-        self.__provided__.remove(item.__provided__)
+        if self.__provided__:
+            self.__provided__.remove(item.__transmuter_provided__)
         super().remove(value)
 
     @ensure_loaded
@@ -592,7 +636,7 @@ class RelationCollection(list[T], Association[T]):
 
 class PassiveRelationCollection(RelationCollection[T]):
     # new items kept in __payloads__, and passive relation collection never keep loaded items
-    __payloads__: Iterable[T] | None
+    __payloads__: list[T]
     batch_size: int = 10
 
     @classmethod
@@ -610,7 +654,7 @@ class PassiveRelationCollection(RelationCollection[T]):
             raise RuntimeError(
                 f"The relation '{self.field_name}' is not yet prepared with an owner instance."
             )
-        return getattr(self.__instance__.__provided__, self.used_name)
+        return getattr(self.__instance__.__transmuter_provided__, self.used_name)
 
     @cached_property
     def __session__(self) -> Session:
@@ -618,10 +662,11 @@ class PassiveRelationCollection(RelationCollection[T]):
             raise RuntimeError(
                 f"The relation '{self.field_name}' is not yet prepared with an owner instance."
             )
-        return inspect(self.__instance__.__provided__).session
+        return inspect(self.__instance__.__transmuter_provided__).session  # pyright: ignore[reportOptionalMemberAccess]
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
+        # disabled for no longer duck typed as list for now
         if self.__payloads__:
             # use append to add new assigned objects,
             # when an async dialect is choosed, extend would be expected called inside a greenlet,
@@ -629,7 +674,7 @@ class PassiveRelationCollection(RelationCollection[T]):
             # WriteOnlyCollection.add uses session.add so it is always sync.
             for item in self.__payloads__:
                 self.append(item)
-        self.__payloads__ = None
+        self.__payloads__.clear()
 
     def select(self) -> Select[tuple[T]]:
         return self.__provided__.select()

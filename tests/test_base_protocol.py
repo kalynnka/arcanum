@@ -13,7 +13,7 @@ def test_bless_foo_into_protocol(foo_with_bar: Foo, engine: Engine):
 
         assert foo.id == foo_with_bar.id
         assert foo.name == foo_with_bar.name
-        assert isinstance(foo.__provided__, FooModel)
+        assert isinstance(foo.__transmuter_provided__, FooModel)
 
         assert len(foo.bars) == 2
         assert isinstance(foo.bars[0], Bar)
@@ -110,7 +110,7 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
 
         assert isinstance(updated2, Foo)
         assert updated1 is updated2
-        assert updated1.__provided__ is updated2.__provided__
+        assert updated1.__transmuter_provided__ is updated2.__transmuter_provided__
         assert updated1.name == updated2.name == "Updated Foo With Returning"
 
         # example of synchronize_session=False
@@ -125,22 +125,30 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
         updated3 = result.scalars().one()
 
         assert updated1 is updated2 is updated3
-        assert updated1.__provided__ is updated2.__provided__ is updated3.__provided__
         assert (
-            updated1.__provided__.name
-            == updated2.__provided__.name
-            == updated3.__provided__.name
+            updated1.__transmuter_provided__
+            is updated2.__transmuter_provided__
+            is updated3.__transmuter_provided__
+        )
+        assert (
+            updated1.__transmuter_provided__.name
+            == updated2.__transmuter_provided__.name
+            == updated3.__transmuter_provided__.name
             == "Updated Foo With Returning"
         )
 
         session.refresh(updated3)
 
         assert updated1 is updated2 is updated3
-        assert updated1.__provided__ is updated2.__provided__ is updated3.__provided__
         assert (
-            updated1.__provided__.name
-            == updated2.__provided__.name
-            == updated3.__provided__.name
+            updated1.__transmuter_provided__
+            is updated2.__transmuter_provided__
+            is updated3.__transmuter_provided__
+        )
+        assert (
+            updated1.__transmuter_provided__.name
+            == updated2.__transmuter_provided__.name
+            == updated3.__transmuter_provided__.name
             == "Updated Foo With Returning Again"
         )
 

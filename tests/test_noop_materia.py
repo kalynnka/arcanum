@@ -30,19 +30,18 @@ def noop_materia():
         yield
 
 
-def test_noop_materia_normal_attributes_use_defaultdict():
-    """Test that normal attributes are set directly to defaultdict"""
+def test_noop_materia_works_as_normal_pydantic_model():
+    """Test that transmuters without a provider work as normal Pydantic models"""
     author = Author(name="J.K. Rowling")
 
-    # The __provided__ should be a defaultdict instance
-    assert author.__provided__.__class__.__name__ == "defaultdict"
+    # The __provided__ should be None for NoOpMateria
+    assert author.__transmuter_provided__ is None
 
-    # Normal attributes should be accessible as dictionary keys
-    assert author.__provided__["name"] == "J.K. Rowling"
+    # Normal attributes should be accessible directly on the model
+    assert author.name == "J.K. Rowling"
 
-    # Update attribute and verify it's stored in defaultdict
+    # Update attribute and verify it works
     author.name = "Joanne Rowling"
-    assert author.__provided__["name"] == "Joanne Rowling"
     assert author.name == "Joanne Rowling"
 
 

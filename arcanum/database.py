@@ -215,9 +215,9 @@ class Session(SqlalchemySession):
 
     def expunge(self, instance: BaseTransmuter) -> None:
         if self._validation_context is not None:
-            if instance.__provided__ in self._validation_context:
-                del self._validation_context[instance.__provided__]
-        super().expunge(instance.__provided__)
+            if instance.__transmuter_provided__ in self._validation_context:
+                del self._validation_context[instance.__transmuter_provided__]
+        super().expunge(instance.__transmuter_provided__)
 
     def expunge_all(self) -> None:
         if self._validation_context is not None:
@@ -227,7 +227,7 @@ class Session(SqlalchemySession):
     def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
         super().add(instance, _warn)
         if self._validation_context is not None:
-            self._validation_context[instance.__provided__] = instance
+            self._validation_context[instance.__transmuter_provided__] = instance
 
     def refresh(
         self,
@@ -236,8 +236,8 @@ class Session(SqlalchemySession):
         with_for_update: ForUpdateArg | None | bool | dict[str, Any] = None,
     ) -> None:
         if self._validation_context is not None:
-            if instance.__provided__ not in self._validation_context:
-                self._validation_context[instance.__provided__] = instance
+            if instance.__transmuter_provided__ not in self._validation_context:
+                self._validation_context[instance.__transmuter_provided__] = instance
         super().refresh(instance, attribute_names, with_for_update)
         instance.revalidate()
 
@@ -252,9 +252,9 @@ class Session(SqlalchemySession):
         return instance.revalidate()
 
     def enable_relationship_loading(self, obj: BaseTransmuter) -> None:
-        super().enable_relationship_loading(obj.__provided__)
+        super().enable_relationship_loading(obj.__transmuter_provided__)
         if self._validation_context is not None:
-            self._validation_context[obj.__provided__] = obj
+            self._validation_context[obj.__transmuter_provided__] = obj
 
     def get(
         self,

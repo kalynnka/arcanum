@@ -4,7 +4,6 @@ from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Optional, Self, TypeVar
 
 from pydantic import ValidationInfo
-from sqlalchemy.util import defaultdict
 
 if TYPE_CHECKING:
     from arcanum.base import BaseTransmuter, TransmuterMetaclass
@@ -58,8 +57,8 @@ class BaseMateria:
         token = self.active_tokens.pop()
         active_materia.reset(token)
 
-    def __getitem__(self, transmuter: TransmuterMetaclass) -> type[Any]:
-        return self.formulars[transmuter]
+    def __getitem__(self, transmuter: TransmuterMetaclass) -> type[Any] | None:
+        return self.formulars.get(transmuter)
 
     def __contains__(self, transmuter: TransmuterMetaclass) -> bool:
         return transmuter in self.formulars
@@ -96,7 +95,7 @@ class NoOpMateria(BaseMateria):
 
     def bless(self):
         def decorator(transmuter_cls: TM) -> TM:
-            self.formulars[transmuter_cls] = defaultdict
+            # No operation performed, just return the class as is
             return transmuter_cls
 
         return decorator

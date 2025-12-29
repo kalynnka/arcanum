@@ -135,7 +135,7 @@ class TransmuterMetaclass(ModelMetaclass):
         except AttributeError as e:
             if object.__getattribute__(self, "__transmuter_complete__"):
                 provider = object.__getattribute__(self, "__transmuter_provider__")
-                if hasattr(provider, name):
+                if provider and hasattr(provider, name):
                     return getattr(provider, name)
             raise e
 
@@ -152,11 +152,7 @@ class TransmuterMetaclass(ModelMetaclass):
         return active_materia.get()
 
     @property
-    def __transmuter_provider__(self) -> type[Any]:
-        if self not in self.__transmuter_materia__:
-            raise AttributeError(
-                f"Transmuter {self.__name__} is not blessed within {self.__transmuter_materia__.__class__.__name__}"
-            )
+    def __transmuter_provider__(self) -> type[Any] | None:
         return self.__transmuter_materia__[self]
 
     @property
@@ -228,7 +224,7 @@ class TransmuterMetaclass(ModelMetaclass):
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     _revalidating: bool = PrivateAttr(default=False)
-    __provided__: Any = NoInitField(init=False)
+    __transmuter_provided__: Optional[Any] = NoInitField(init=False)
 
     def __getattribute__(self, name: str) -> Any:
         value: Any = object.__getattribute__(self, name)
@@ -241,20 +237,26 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         try:
             return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
         except AttributeError as e:
-            if hasattr(self.__provided__, name):
-                return getattr(self.__provided__, name)
+            if self.__transmuter_provided__ and hasattr(
+                self.__transmuter_provided__, name
+            ):
+                return getattr(self.__transmuter_provided__, name)
             raise e
 
     def __setattr__(self, name: str, value: Any):
         super().__setattr__(name, value)
-        if self.__provided__ and name in type(self).model_fields:
-            setattr(self.__provided__, name, getattr(self, name))
+        if self.__transmuter_provided__ and name in type(self).model_fields:
+            setattr(self.__transmuter_provided__, name, getattr(self, name))
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        self.__provided__ = type(self).__transmuter_provider__(
-            **self.model_dump(exclude=set(type(self).model_associations.keys()))
-        )
+        provider = type(self).__transmuter_provider__
+        if provider is not None:
+            self.__transmuter_provided__ = provider(
+                **self.model_dump(exclude=set(type(self).model_associations.keys()))
+            )
+        else:
+            self.__transmuter_provided__ = None
         for name in type(self).model_associations:
             association = getattr(self, name)
             if isinstance(association, Association):
@@ -269,7 +271,9 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     def model_formulate(
         cls, data: Any, handler: ModelWrapValidatorHandler[Self], info: ValidationInfo
     ) -> BaseTransmuter:
-        if isinstance(data, cls.__transmuter_provider__):
+        if cls.__transmuter_provider__ and isinstance(
+            data, cls.__transmuter_provider__
+        ):
             context = validated.get()
             if cached := context.get(data):
                 # if the cached instance is in revalidating state, let it through to sync orm state
@@ -278,7 +282,7 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
             preprocessed = cls.__transmuter_materia__.before_validator(data, info)
             instance = handler(preprocessed)
-            instance.__provided__ = data
+            instance.__transmuter_provided__ = data
             instance = cls.__transmuter_materia__.after_validator(instance, info)
 
             if not cached:
@@ -313,9 +317,9 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             return self
 
         self._revalidating = True
-        if self.__provided__:
+        if self.__transmuter_provided__:
             self.__pydantic_validator__.validate_python(
-                self.__provided__,
+                self.__transmuter_provided__,
                 self_instance=self,
             )
         # double ensure the revalidation flag is reset to False
