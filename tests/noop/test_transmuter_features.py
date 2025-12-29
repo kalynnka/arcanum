@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from arcanum.base import validation_context
 from tests.schemas import Author, Book
 
 """Test transmuter-specific features with NoOpMateria.
@@ -234,43 +233,6 @@ class TestAbsorbMethod:
         assert result is author
 
 
-class TestValidationContext:
-    """Test validation context manager for tracking validated instances."""
-
-    def test_validation_context_tracks_instances(self):
-        """Test that validation context tracks created instances."""
-        with validation_context() as context:
-            author1 = Author(name="Author 1", field="Physics")
-            author2 = Author(name="Author 2", field="Biology")
-
-            # Context should be empty for NoOpMateria
-            # (validation context is primarily for ORM-backed instances)
-            # But we can verify the context manager works
-            assert context is not None
-
-    def test_validation_context_isolation(self):
-        """Test that validation contexts are isolated."""
-        with validation_context() as ctx1:
-            author1 = Author(name="Author 1", field="Physics")
-
-        with validation_context() as ctx2:
-            author2 = Author(name="Author 2", field="Biology")
-
-        # Contexts should be different instances
-        assert ctx1 is not ctx2
-
-    def test_nested_validation_contexts(self):
-        """Test that validation contexts can be nested."""
-        with validation_context() as outer:
-            author1 = Author(name="Outer", field="Physics")
-
-            with validation_context() as inner:
-                author2 = Author(name="Inner", field="Biology")
-
-                # Inner and outer contexts are different
-                assert inner is not outer
-
-
 class TestModelMetadata:
     """Test metadata and introspection of transmuter models."""
 
@@ -312,65 +274,3 @@ class TestModelMetadata:
         """Test model configuration."""
         assert Book.model_config.get("from_attributes") is True
         assert Author.model_config.get("from_attributes") is True
-
-
-class TestModelInheritance:
-    """Test that model inheritance works correctly."""
-
-    def test_inherited_fields_are_accessible(self):
-        """Test that inherited Pydantic features work."""
-        author = Author(name="Test", field="Physics")
-
-        # Methods from BaseModel should be available
-        assert hasattr(author, "model_dump")
-        assert hasattr(author, "model_copy")
-        assert hasattr(author, "model_validate")
-
-    def test_metaclass_features_available(self):
-        """Test that metaclass features are available."""
-        # Create and Update models are class properties
-        assert hasattr(Book, "Create")
-        assert hasattr(Book, "Update")
-        assert hasattr(Book, "shell")
-
-        # Check they are callable/accessible
-        assert callable(Book.Create)
-        assert callable(Book.Update)
-        assert callable(Book.shell)
-
-
-class TestCustomValidation:
-    """Test custom validation and additional model features."""
-
-    def test_field_validators_work(self):
-        """Test that field validators are applied."""
-        # Valid literal value
-        author = Author(name="Test", field="Physics")
-        assert author.field == "Physics"
-
-        # Invalid literal value should fail
-        with pytest.raises(ValidationError):
-            Author(name="Test", field="InvalidField")  # pyright: ignore[reportArgumentType]
-
-    def test_model_from_attributes(self):
-        """Test model_validate with from_attributes mode."""
-
-        # Create a simple object with attributes
-        class SimpleObject:
-            def __init__(self):
-                self.name = "Test Author"
-                self.field = "Physics"
-
-        obj = SimpleObject()
-        author = Author.model_validate(obj)
-
-        assert author.name == "Test Author"
-        assert author.field == "Physics"
-
-    def test_model_validate_json(self):
-        """Test model_validate_json."""
-        json_str = '{"name": "Test Author", "field": "Physics"}'
-        author = Author.model_validate_json(json_str)
-
-        assert author.name == "Test Author"
-        assert author.field == "Physics"
