@@ -165,6 +165,9 @@ def test_adapted_update(engine: Engine, book_with_relations: Book):
             is updated2.__transmuter_provided__
             is updated3.__transmuter_provided__
         )
+        assert isinstance(updated1.__transmuter_provided__, models.Book)
+        assert isinstance(updated2.__transmuter_provided__, models.Book)
+        assert isinstance(updated3.__transmuter_provided__, models.Book)
         assert (
             updated1.__transmuter_provided__.title
             == updated2.__transmuter_provided__.title

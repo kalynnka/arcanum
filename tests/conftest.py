@@ -28,11 +28,6 @@ ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanum"
 async def async_engine():
     engine = create_async_engine(ASYNC_DB_URL, echo=True, future=True)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.commit()
-
     try:
         yield engine
     finally:
@@ -47,6 +42,13 @@ def engine(async_engine: AsyncEngine):
         yield sync_engine
     finally:
         sync_engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_database(engine):
+    with engine.begin() as conn:
+        Base.metadata.drop_all(conn)
+        Base.metadata.create_all(conn)
 
 
 @pytest.fixture(scope="session", autouse=True)

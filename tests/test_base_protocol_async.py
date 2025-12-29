@@ -3,6 +3,7 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from arcanum.database import AsyncSession
+from tests import models
 from tests.schemas import Author, Book, BookDetail, Category, Publisher
 
 
@@ -181,6 +182,9 @@ async def test_adapted_update_async(
             is updated2.__transmuter_provided__
             is updated3.__transmuter_provided__
         )
+        assert isinstance(updated1.__transmuter_provided__, models.Book)
+        assert isinstance(updated2.__transmuter_provided__, models.Book)
+        assert isinstance(updated3.__transmuter_provided__, models.Book)
         assert (
             updated1.__transmuter_provided__.title
             == updated2.__transmuter_provided__.title
