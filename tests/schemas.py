@@ -4,7 +4,12 @@ from typing import Annotated, Literal, Optional
 
 from pydantic import ConfigDict, Field
 
-from arcanum.association import Relation, RelationCollection
+from arcanum.association import (
+    Relation,
+    RelationCollection,
+    Relationship,
+    Relationships,
+)
 from arcanum.base import BaseTransmuter, Identity
 from arcanum.materia.sqlalchemy import SqlalchemyMateria
 from tests import models
@@ -21,7 +26,7 @@ class Publisher(BaseTransmuter):
     name: str
     country: str
 
-    books: RelationCollection[Book] = Field(default_factory=RelationCollection)
+    books: RelationCollection[Book] = Relationships()
 
 
 # Author schema (1-M with Book)
@@ -42,7 +47,7 @@ class Author(BaseTransmuter):
         "Dystopian Fiction",
     ]
 
-    books: RelationCollection[Book] = Field(default_factory=RelationCollection)
+    books: RelationCollection[Book] = Relationships()
 
 
 # BookDetail schema (1-1 with Book)
@@ -56,7 +61,7 @@ class BookDetail(BaseTransmuter):
     abstract: str
     book_id: int | None = None
 
-    book: Relation[Book] = Field(default_factory=Relation)
+    book: Relation[Book] = Relationship()
 
 
 # Category schema (M-M with Book)
@@ -68,7 +73,7 @@ class Category(BaseTransmuter):
     name: str
     description: str
 
-    books: RelationCollection[Book] = Field(default_factory=RelationCollection)
+    books: RelationCollection[Book] = Relationships()
 
 
 # Translator schema (optional 1-1 with Book)
@@ -80,7 +85,7 @@ class Translator(BaseTransmuter):
     name: str
     language: str
 
-    book: Relation[Optional[Book]] = Field(default_factory=Relation)
+    book: Relation[Optional[Book]] = Relationship()
 
 
 # Review schema (optional M-1 with Book)
@@ -94,7 +99,7 @@ class Review(BaseTransmuter):
     comment: str
     book_id: int | None = None
 
-    book: Relation[Optional[Book]] = Field(default_factory=Relation)
+    book: Relation[Optional[Book]] = Relationship()
 
 
 # Book schema (M-1 with Author, M-1 with Publisher, 1-1 with BookDetail, M-M with Category, optional 1-1 with Translator, optional 1-M with Reviews)
@@ -109,13 +114,9 @@ class Book(BaseTransmuter):
     publisher_id: int | None = None
     translator_id: int | None = None
 
-    author: Relation[Author] = Field(default_factory=Relation)
-    publisher: Relation[Publisher] = Field(default_factory=Relation)
-    translator: Relation[Optional[Translator]] = Field(
-        default_factory=Relation
-    )  # Optional 1-1
-    detail: Relation[BookDetail] = Field(default_factory=Relation)
-    categories: RelationCollection[Category] = Field(default_factory=RelationCollection)
-    reviews: RelationCollection[Review] = Field(
-        default_factory=RelationCollection
-    )  # Optional 1-M
+    author: Relation[Author] = Relationship()
+    publisher: Relation[Publisher] = Relationship()
+    translator: Relation[Optional[Translator]] = Relationship()
+    detail: Relation[BookDetail] = Relationship()
+    categories: RelationCollection[Category] = Relationships()
+    reviews: RelationCollection[Review] = Relationships()  # Optional 1-M

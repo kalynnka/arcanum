@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from functools import cached_property, wraps
+from functools import cached_property, partial, wraps
 from types import UnionType
 from typing import (
     TYPE_CHECKING,
@@ -23,7 +23,7 @@ from typing import (
     overload,
 )
 
-from pydantic import GetCoreSchemaHandler, TypeAdapter
+from pydantic import Field, GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import core_schema
 from sqlalchemy import Insert, Select, inspect
 from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
@@ -689,3 +689,7 @@ class PassiveRelationCollection(RelationCollection[T]):
 
     def delete(self) -> Any:
         return self.__provided__.delete()
+
+
+Relationship = partial(Field, default_factory=Relation)
+Relationships = partial(Field, default_factory=RelationCollection)
