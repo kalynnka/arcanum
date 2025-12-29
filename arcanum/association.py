@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC
-from copy import copy
 from functools import cached_property, wraps
 from types import UnionType
 from typing import (
@@ -124,12 +123,11 @@ class Association(Generic[A], ABC):
 
             value = cls.__pydantic_before_validator__(value, info)
             if isinstance(value, cls):
-                instance = copy(value)
-                instance.__payloads__ = handler(instance.__payloads__)
+                instance = value
+                instance.__init__(handler(instance.__payloads__))
             else:
                 instance = cls.__new__(cls)
-                instance.__init__()
-                instance.__payloads__ = handler(value)
+                instance.__init__(handler(value))
             instance.__generic__ = generic_type
             instance.field_name = info.field_name
             instance = instance.__pydantic_after_validator__(info)
@@ -147,8 +145,7 @@ class Association(Generic[A], ABC):
                     core_schema.is_instance_schema(cls),
                 ],
             ),
-            default=cls(),
-            validate_default=True,
+            default_factory=cls,
             serialization=cls.__get_pydantic_serialize_schema__(generic_type, handler),
         )
 
@@ -293,7 +290,8 @@ class Relation(Association[Optional_T]):
         if not self.__instance__ or self.__loaded__:
             return self.__payloads__
 
-        # No provided, return payloads directly, works as a normal attribute
+        # A: No provided, None
+        # B: provided value is None
         if not self.__provided__:
             return self.__payloads__
 
@@ -431,7 +429,8 @@ class RelationCollection(list[T], Association[T]):
         if self.__loaded__:
             return self
 
-        # No provided, duck typed as normal list
+        # A: No provided, None
+        # B: provided value is empty, []
         if not self.__provided__:
             return self
 
@@ -563,7 +562,7 @@ class RelationCollection(list[T], Association[T]):
         if self.__provided__:
             self.__provided__.append(
                 object.__transmuter_provided__
-                if hasattr(object, "__provided__")
+                if hasattr(object, "__transmuter_provided__")
                 else object
             )
         super().append(object)
@@ -571,11 +570,11 @@ class RelationCollection(list[T], Association[T]):
     @ensure_loaded
     def extend(self, iterable: Iterable[T]):
         iterable = self.validate_python(iterable)
-        if self.__provided__:
+        if self.__provided__ is not None:
             self.__provided__.extend(
                 (
                     item.__transmuter_provided__
-                    if hasattr(item, "__provided__")
+                    if hasattr(item, "__transmuter_provided__")
                     else item
                     for item in iterable
                 )

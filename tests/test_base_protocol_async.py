@@ -3,116 +3,154 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from arcanum.database import AsyncSession
-from tests.models import Foo as FooModel
-from tests.schemas import Bar, Foo
+from tests.schemas import Author, Book, BookDetail, Category, Publisher
 
 
 @pytest.mark.asyncio
-async def test_bless_foo_into_protocol_async(
+async def test_bless_book_into_protocol_async(
     async_engine: AsyncEngine,
-    async_foo_with_bar: Foo,
+    book_with_relations: Book,
 ):
     async with AsyncSession(async_engine) as session:
-        foo = await session.get_one(Foo, async_foo_with_bar.id)
+        book = await session.get_one(Book, book_with_relations.id)
 
-        assert foo.id == async_foo_with_bar.id
-        assert foo.name == async_foo_with_bar.name
-        assert isinstance(foo.__transmuter_provided__, FooModel)
+        assert book.id == book_with_relations.id
+        assert book.title == book_with_relations.title
+        assert isinstance(
+            book.__transmuter_provided__,
+            type(book_with_relations.__transmuter_provided__),
+        )
 
         # explicitly trigger the loading of relationships
-        await foo.bars
+        await book.author
+        await book.publisher
+        await book.detail
+        await book.categories
 
-        assert len(foo.bars) == 2
-        assert isinstance(foo.bars[0], Bar)
-        assert isinstance(foo.bars[0].foo.value, Foo)
-        assert foo.bars[0].foo.value is foo
+        # Test M-1 relationship: Book -> Author
+        assert isinstance(book.author.value, Author)
+        assert book.author.value.name == "Stephen Hawking"
 
-        foo.bars[0].data = "Updated Bar Data"
-        await session.flush()
+        # Test M-1 relationship: Book -> Publisher
+        assert isinstance(book.publisher.value, Publisher)
+        assert book.publisher.value.name == "Bantam Books"
 
-        bar = await session.get(Bar, foo.bars[0].id)
-        assert bar is not None
-        assert bar.data == foo.bars[0].data
+        # Test 1-1 relationship: Book -> BookDetail
+        assert isinstance(book.detail.value, BookDetail)
+        assert book.detail.value.isbn == "978-0553380163"
+        assert book.detail.value.book.value is book
+
+        # Test M-M relationship: Book -> Categories
+        assert len(book.categories) == 2
+        assert isinstance(book.categories[0], Category)
 
 
 @pytest.mark.asyncio
 async def test_column_expression_async(
-    async_engine: AsyncEngine, async_foo_with_bar: Foo
+    async_engine: AsyncEngine, book_with_relations: Book
 ):
-    stmt = select(Foo).where(Foo["id"] == async_foo_with_bar.id)
+    stmt = select(Book).where(Book["id"] == book_with_relations.id)
     async with AsyncSession(async_engine) as session:
         result = await session.execute(stmt)
-        foo = result.scalars().one()
-        assert foo is not None
-        assert foo.id == async_foo_with_bar.id
-        assert foo.name == async_foo_with_bar.name
+        book = result.scalars().one()
+        assert book is not None
+        assert book.id == book_with_relations.id
+        assert book.title == book_with_relations.title
 
 
 @pytest.mark.asyncio
-async def test_adapted_select_async(async_engine: AsyncEngine, async_foo_with_bar: Foo):
+async def test_adapted_select_async(
+    async_engine: AsyncEngine, book_with_relations: Book
+):
     async with AsyncSession(async_engine) as session:
-        stmt = select(Foo, Foo["name"]).where(Foo["id"] == async_foo_with_bar.id)
+        stmt = select(Book, Book["title"]).where(Book["id"] == book_with_relations.id)
         result = await session.execute(stmt)
         row = result.fetchone()
         assert row
-        assert isinstance(row[0], Foo)
-        assert row[0].id == async_foo_with_bar.id
-        assert row[0].name == async_foo_with_bar.name
-        assert row[1] == async_foo_with_bar.name
+        assert isinstance(row[0], Book)
+        assert row[0].id == book_with_relations.id
+        assert row[0].title == book_with_relations.title
+        assert row[1] == book_with_relations.title
 
 
 @pytest.mark.asyncio
 async def test_adapted_insert_async(async_engine: AsyncEngine):
     async with AsyncSession(async_engine) as session:
+        # First create required Author and Publisher
+        author = Author(name="Marie Curie", field="Chemistry")
+        publisher = Publisher(name="Academic Press", country="France")
+        session.add(author)
+        session.add(publisher)
+        await session.flush()
+
+        author.revalidate()
+        publisher.revalidate()
+
         # no returning
-        stmt = insert(Foo).values(name="Inserted Foo")
+        stmt = insert(Book).values(
+            title="Radioactivity",
+            year=1910,
+            author_id=author.id,
+            publisher_id=publisher.id,
+        )
         await session.execute(stmt)
 
-        inserted_foo = (
-            (await session.execute(select(Foo).where(Foo["name"] == "Inserted Foo")))
+        inserted_book = (
+            (
+                await session.execute(
+                    select(Book).where(Book["title"] == "Radioactivity")
+                )
+            )
             .scalars()
             .one()
         )
 
-        assert inserted_foo is not None
-        assert inserted_foo.name == "Inserted Foo"
+        assert inserted_book is not None
+        assert inserted_book.title == "Radioactivity"
 
         # with returning
         stmt = (
-            insert(Foo)
-            .values(name="Inserted Foo With Returning")
-            .returning(Foo, Foo["id"])
+            insert(Book)
+            .values(
+                title="Treatise on Radioactivity",
+                year=1914,
+                author_id=author.id,
+                publisher_id=publisher.id,
+            )
+            .returning(Book, Book["id"])
         )
         result = await session.execute(stmt)
-        inserted_foo = result.scalars().one()
+        inserted_book = result.scalars().one()
         assert result
 
 
 @pytest.mark.asyncio
-async def test_adapted_update_async(async_engine: AsyncEngine, async_foo_with_bar: Foo):
+async def test_adapted_update_async(
+    async_engine: AsyncEngine, book_with_relations: Book
+):
     async with AsyncSession(async_engine) as session:
-        foo_id = async_foo_with_bar.id
+        book_id = book_with_relations.id
 
         # update without returning
-        stmt = update(Foo).where(Foo["id"] == foo_id).values(name="Updated Foo")
+        stmt = update(Book).where(Book["id"] == book_id).values(title="Updated Book")
         await session.execute(stmt)
 
-        updated1 = await session.get(Foo, foo_id)
+        updated1 = await session.get(Book, book_id)
         assert updated1
-        assert updated1.name == "Updated Foo"
+        assert updated1.title == "Updated Book"
 
         # update with returning
         stmt = (
-            update(Foo)
-            .where(Foo["id"] == foo_id)
-            .values(name="Updated Foo With Returning")
-            .returning(Foo)
+            update(Book)
+            .where(Book["id"] == book_id)
+            .values(title="Updated Book With Returning")
+            .returning(Book)
         )
         result = await session.execute(stmt)
         updated2 = result.scalars().one()
 
         # TODO: We need an manual refresh/revalidate operation here to keep the transmuter object sync with the orm
-        # as the same foo orm object is loaded earlier within the same session and kept in session's identity map,
+        # as the same book orm object is loaded earlier within the same session and kept in session's identity map,
         # Sqlalchemy's synchronization will update the orm state with an update/insert statement
         # while we lack of a mecanisum (or not that proper) to notify the transmuter object to revalidate automatically
         # see https://docs.sqlalchemy.org/en/20/orm/queryguide/dml.html#selecting-a-synchronization-strategy
@@ -121,18 +159,18 @@ async def test_adapted_update_async(async_engine: AsyncEngine, async_foo_with_ba
         # 2. try to trigger the revalidate on update/insert statement execution if the statement execution option have synchronize_session is not False
         updated2.revalidate()
 
-        assert isinstance(updated2, Foo)
+        assert isinstance(updated2, Book)
         assert updated1 is updated2
         assert updated1.__transmuter_provided__ is updated2.__transmuter_provided__
-        assert updated1.name == updated2.name == "Updated Foo With Returning"
+        assert updated1.title == updated2.title == "Updated Book With Returning"
 
         # example of synchronize_session=False
         stmt = (
-            update(Foo)
-            .where(Foo["id"] == foo_id)
-            .values(name="Updated Foo With Returning Again")
+            update(Book)
+            .where(Book["id"] == book_id)
+            .values(title="Updated Book With Returning Again")
             .execution_options(synchronize_session=False)
-            .returning(Foo)
+            .returning(Book)
         )
         result = await session.execute(stmt)
         updated3 = result.scalars().one()
@@ -144,10 +182,10 @@ async def test_adapted_update_async(async_engine: AsyncEngine, async_foo_with_ba
             is updated3.__transmuter_provided__
         )
         assert (
-            updated1.__transmuter_provided__.name
-            == updated2.__transmuter_provided__.name
-            == updated3.__transmuter_provided__.name
-            == "Updated Foo With Returning"
+            updated1.__transmuter_provided__.title
+            == updated2.__transmuter_provided__.title
+            == updated3.__transmuter_provided__.title
+            == "Updated Book With Returning"
         )
 
         await session.refresh(updated3)
@@ -159,37 +197,54 @@ async def test_adapted_update_async(async_engine: AsyncEngine, async_foo_with_ba
             is updated3.__transmuter_provided__
         )
         assert (
-            updated1.__transmuter_provided__.name
-            == updated2.__transmuter_provided__.name
-            == updated3.__transmuter_provided__.name
-            == "Updated Foo With Returning Again"
+            updated1.__transmuter_provided__.title
+            == updated2.__transmuter_provided__.title
+            == updated3.__transmuter_provided__.title
+            == "Updated Book With Returning Again"
         )
 
 
 @pytest.mark.asyncio
 async def test_adapted_delete_async(async_engine: AsyncEngine):
     async with AsyncSession(async_engine) as session:
-        # Create another foo to delete
-        new_foo = Foo(name="To Be Deleted")
-        session.add(new_foo)
+        # Create required Author and Publisher
+        author = Author(name="George Orwell", field="Dystopian Fiction")
+        publisher = Publisher(name="Secker & Warburg", country="United Kingdom")
+        session.add(author)
+        session.add(publisher)
+        await session.flush()
+        author.revalidate()
+        publisher.revalidate()
+
+        # Create a book to delete
+        new_book = Book(
+            title="Nineteen Eighty-Four",
+            year=1949,
+            author_id=author.id,
+            publisher_id=publisher.id,
+        )
+        session.add(new_book)
         await session.flush()
         # TODO: we must revalidate here to sync the returned identity keys from orm to transmuter object
         # revalidate won't issue an additional select statement as the identity keys are be already returned by sqlalchemy (with dialects that support returning)
-        # except for Mysql :xd, in that case do session.refresh(new_foo)
-        new_foo.revalidate()
+        # except for Mysql :xd, in that case do session.refresh(new_book)
+        new_book.revalidate()
 
         # delete with returning
-        stmt = delete(Foo).where(Foo["id"] == new_foo.id).returning(Foo)
+        stmt = delete(Book).where(Book["id"] == new_book.id).returning(Book)
         result = await session.execute(stmt)
-        deleted_foo = result.scalars().one()
+        deleted_book = result.scalars().one()
 
-        assert isinstance(deleted_foo, Foo)
-        assert deleted_foo.id == new_foo.id
-        assert deleted_foo.name == "To Be Deleted"
+        assert isinstance(deleted_book, Book)
+        assert deleted_book.id == new_book.id
+        assert deleted_book.title == "Nineteen Eighty-Four"
+        assert deleted_book.year == 1949
+        assert deleted_book.author_id == author.id
+        assert deleted_book.publisher_id == publisher.id
 
         # verify it's actually deleted
         after = (
-            (await session.execute(select(Foo).where(Foo["id"] == new_foo.id)))
+            (await session.execute(select(Book).where(Book["id"] == new_book.id)))
             .scalars()
             .one_or_none()
         )

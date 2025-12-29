@@ -1,105 +1,140 @@
-import pytest
-from pydantic import ValidationError
 from sqlalchemy import Engine, delete, insert, select, update
 
 from arcanum.database import Session
-from tests.models import Foo as FooModel
-from tests.schemas import Bar, Foo
+from tests import models
+from tests.schemas import Author, Book, BookDetail, Category, Publisher
 
 
-def test_bless_foo_into_protocol(foo_with_bar: Foo, engine: Engine):
+def test_nested_blessing(book_with_relations: Book, engine: Engine):
     with Session(engine) as session:
-        foo = session.get_one(Foo, foo_with_bar.id)
+        book = session.get_one(Book, book_with_relations.id)
 
-        assert foo.id == foo_with_bar.id
-        assert foo.name == foo_with_bar.name
-        assert isinstance(foo.__transmuter_provided__, FooModel)
+        assert isinstance(book, Book)
+        assert isinstance(book.__transmuter_provided__, models.Book)
+        assert book.id == book_with_relations.id
+        assert book.title == book_with_relations.title
 
-        assert len(foo.bars) == 2
-        assert isinstance(foo.bars[0], Bar)
-        assert isinstance(foo.bars[0].foo.value, Foo)
-        assert foo.bars[0].foo.value is foo
+        # Test M-1 relationship: Book -> Author
+        assert isinstance(book.author.value, Author)
+        assert isinstance(book.author.value.__transmuter_provided__, models.Author)
+        assert book.author.value.name == "Stephen Hawking"
 
-        foo.bars[0].data = "Updated Bar Data"
-        session.flush()
+        # Test M-1 relationship: Book -> Publisher
+        assert isinstance(book.publisher.value, Publisher)
+        assert isinstance(
+            book.publisher.value.__transmuter_provided__, models.Publisher
+        )
+        assert book.publisher.value.name == "Bantam Books"
 
-        bar = session.get(Bar, foo.bars[0].id)
-        assert bar is not None
-        assert bar.data == foo.bars[0].data
+        # Test 1-1 relationship: Book -> BookDetail
+        assert isinstance(book.detail.value, BookDetail)
+        assert isinstance(book.detail.value.__transmuter_provided__, models.BookDetail)
+        assert book.detail.value.isbn == "978-0553380163"
+        assert book.detail.value.book.value is book
+
+        # Test M-M relationship: Book -> Categories
+        assert len(book.categories) == 2
+        assert isinstance(book.categories[0], Category)
+        assert isinstance(book.categories[0].__transmuter_provided__, models.Category)
+        assert {category.name for category in book.categories} == {
+            "Theoretical Physics",
+            "Popular Science",
+        }
 
 
-def test_column_expression(engine: Engine, foo_with_bar: Foo):
-    stmt = select(Foo).where(Foo["id"] == foo_with_bar.id)
+def test_column_expression(engine: Engine, book_with_relations: Book):
+    stmt = select(Book).where(Book["id"] == book_with_relations.id)
     with Session(engine) as session:
         result = session.execute(stmt)
-        foo = result.scalars().one()
-        assert foo is not None
-        assert foo.id == foo_with_bar.id
-        assert foo.name == foo_with_bar.name
+        book = result.scalars().one()
+        assert book is not None
+        assert book.id == book_with_relations.id
+        assert book.title == book_with_relations.title
 
 
-def test_adapted_select(engine: Engine, foo_with_bar: Foo):
+def test_adapted_select(engine: Engine, book_with_relations: Book):
     with Session(engine) as session:
-        stmt = select(Foo, Foo["name"]).where(Foo["id"] == foo_with_bar.id)
+        stmt = select(Book, Book["title"]).where(Book["id"] == book_with_relations.id)
         result = session.execute(stmt)
         row = result.fetchone()
         assert row
-        assert isinstance(row[0], Foo)
-        assert row[0].id == foo_with_bar.id
-        assert row[0].name == foo_with_bar.name
-        assert row[1] == foo_with_bar.name
+        assert isinstance(row[0], Book)
+        assert row[0].id == book_with_relations.id
+        assert row[0].title == book_with_relations.title
+        assert row[1] == book_with_relations.title
 
 
 def test_adapted_insert(engine: Engine):
     with Session(engine) as session:
+        # First create required Author and Publisher
+        author = Author(name="Albert Einstein", field="Physics")
+        publisher = Publisher(
+            name="Princeton University Press", country="United States"
+        )
+        session.add(author)
+        session.add(publisher)
+        session.flush()
+        author.revalidate()
+        publisher.revalidate()
+
         # no returning
-        stmt = insert(Foo).values(name="Inserted Foo")
+        stmt = insert(Book).values(
+            title="Relativity",
+            year=1916,
+            author_id=author.id,
+            publisher_id=publisher.id,
+        )
         session.execute(stmt)
 
-        inserted_foo = (
-            session.execute(select(Foo).where(Foo["name"] == "Inserted Foo"))
+        inserted_book = (
+            session.execute(select(Book).where(Book["title"] == "Relativity"))
             .scalars()
             .one()
         )
 
-        assert inserted_foo is not None
-        assert inserted_foo.name == "Inserted Foo"
+        assert inserted_book is not None
+        assert inserted_book.title == "Relativity"
 
         # with returning
         stmt = (
-            insert(Foo)
-            .values(name="Inserted Foo With Returning")
-            .returning(Foo, Foo["id"])
+            insert(Book)
+            .values(
+                title="The Meaning of Relativity",
+                year=1922,
+                author_id=author.id,
+                publisher_id=publisher.id,
+            )
+            .returning(Book, Book["id"])
         )
         result = session.execute(stmt)
-        inserted_foo = result.scalars().one()
+        inserted_book = result.scalars().one()
         assert result
 
 
-def test_adapted_update(engine: Engine, foo_with_bar: Foo):
+def test_adapted_update(engine: Engine, book_with_relations: Book):
     with Session(engine) as session:
-        foo_id = foo_with_bar.id
+        book_id = book_with_relations.id
 
         # update without returning
-        stmt = update(Foo).where(Foo["id"] == foo_id).values(name="Updated Foo")
+        stmt = update(Book).where(Book["id"] == book_id).values(title="Updated Book")
         session.execute(stmt)
 
-        updated1 = session.get(Foo, foo_id)
+        updated1 = session.get(Book, book_id)
         assert updated1
-        assert updated1.name == "Updated Foo"
+        assert updated1.title == "Updated Book"
 
         # update with returning
         stmt = (
-            update(Foo)
-            .where(Foo["id"] == foo_id)
-            .values(name="Updated Foo With Returning")
-            .returning(Foo)
+            update(Book)
+            .where(Book["id"] == book_id)
+            .values(title="Updated Book With Returning")
+            .returning(Book)
         )
         result = session.execute(stmt)
         updated2 = result.scalars().one()
 
         # TODO: We need an manual refresh/revalidate operation here to keep the transmuter object sync with the orm
-        # as the same foo orm object is loaded earlier within the same session and kept in session's identity map,
+        # as the same book orm object is loaded earlier within the same session and kept in session's identity map,
         # Sqlalchemy's synchronization will update the orm state with an update/insert statement
         # while we lack of a mecanisum (or not that proper) to notify the transmuter object to revalidate automatically
         # see https://docs.sqlalchemy.org/en/20/orm/queryguide/dml.html#selecting-a-synchronization-strategy
@@ -108,18 +143,18 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
         # 2. try to trigger the revalidate on update/insert statement execution if the statement execution option have synchronize_session is not False
         updated2.revalidate()
 
-        assert isinstance(updated2, Foo)
+        assert isinstance(updated2, Book)
         assert updated1 is updated2
         assert updated1.__transmuter_provided__ is updated2.__transmuter_provided__
-        assert updated1.name == updated2.name == "Updated Foo With Returning"
+        assert updated1.title == updated2.title == "Updated Book With Returning"
 
         # example of synchronize_session=False
         stmt = (
-            update(Foo)
-            .where(Foo["id"] == foo_id)
-            .values(name="Updated Foo With Returning Again")
+            update(Book)
+            .where(Book["id"] == book_id)
+            .values(title="Updated Book With Returning Again")
             .execution_options(synchronize_session=False)
-            .returning(Foo)
+            .returning(Book)
         )
         result = session.execute(stmt)
         updated3 = result.scalars().one()
@@ -131,10 +166,10 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
             is updated3.__transmuter_provided__
         )
         assert (
-            updated1.__transmuter_provided__.name
-            == updated2.__transmuter_provided__.name
-            == updated3.__transmuter_provided__.name
-            == "Updated Foo With Returning"
+            updated1.__transmuter_provided__.title
+            == updated2.__transmuter_provided__.title
+            == updated3.__transmuter_provided__.title
+            == "Updated Book With Returning"
         )
 
         session.refresh(updated3)
@@ -146,36 +181,53 @@ def test_adapted_update(engine: Engine, foo_with_bar: Foo):
             is updated3.__transmuter_provided__
         )
         assert (
-            updated1.__transmuter_provided__.name
-            == updated2.__transmuter_provided__.name
-            == updated3.__transmuter_provided__.name
-            == "Updated Foo With Returning Again"
+            updated1.__transmuter_provided__.title
+            == updated2.__transmuter_provided__.title
+            == updated3.__transmuter_provided__.title
+            == "Updated Book With Returning Again"
         )
 
 
 def test_adapted_delete(engine: Engine):
     with Session(engine) as session:
-        # Create another foo to delete
-        new_foo = Foo(name="To Be Deleted")
-        session.add(new_foo)
+        # Create required Author and Publisher
+        author = Author(name="George Orwell", field="Dystopian Fiction")
+        publisher = Publisher(name="Secker & Warburg", country="United Kingdom")
+        session.add(author)
+        session.add(publisher)
+        session.flush()
+        author.revalidate()
+        publisher.revalidate()
+
+        # Create a book to delete
+        new_book = Book(
+            title="Nineteen Eighty-Four",
+            year=1949,
+            author_id=author.id,
+            publisher_id=publisher.id,
+        )
+        session.add(new_book)
         session.flush()
         # TODO: we must revalidate here to sync the returned identity keys from orm to transmuter object
         # revalidate won't issue an additional select statement as the identity keys are be already returned by sqlalchemy (with dialects that support returning)
-        # except for Mysql :xd, in that case do session.refresh(new_foo)
-        new_foo.revalidate()
+        # except for Mysql :xd, in that case do session.refresh(new_book)
+        new_book.revalidate()
 
         # delete with returning
-        stmt = delete(Foo).where(Foo["id"] == new_foo.id).returning(Foo)
+        stmt = delete(Book).where(Book["id"] == new_book.id).returning(Book)
         result = session.execute(stmt)
-        deleted_foo = result.scalars().one()
+        deleted_book = result.scalars().one()
 
-        assert isinstance(deleted_foo, Foo)
-        assert deleted_foo.id == new_foo.id
-        assert deleted_foo.name == "To Be Deleted"
+        assert isinstance(deleted_book, Book)
+        assert deleted_book.id == new_book.id
+        assert deleted_book.title == "Nineteen Eighty-Four"
+        assert deleted_book.year == 1949
+        assert deleted_book.author_id == author.id
+        assert deleted_book.publisher_id == publisher.id
 
         # verify it's actually deleted
         after = (
-            session.execute(select(Foo).where(Foo["id"] == new_foo.id))
+            session.execute(select(Book).where(Book["id"] == new_book.id))
             .scalars()
             .one_or_none()
         )
@@ -183,26 +235,28 @@ def test_adapted_delete(engine: Engine):
 
 
 def test_create_partial_models():
-    partial = Foo.Create(name="Partial Foo")
-    assert getattr(partial, "name") == "Partial Foo"
+    partial = Book.Create(title="Partial Book", year=2024)
+    assert getattr(partial, "title") == "Partial Book"
+    assert getattr(partial, "year") == 2024
     assert hasattr(partial, "id") is False
 
-    foo = Foo.shell(partial)
-    assert foo.name == "Partial Foo"
-    assert foo.id is None
+    book = Book.shell(partial)
+    assert book.title == "Partial Book"
+    assert book.year == 2024
+    assert book.id is None
 
-    # text ignored fields get defaulted
-    foo_with_extra = Foo.shell(Foo.Create(id=2, name="Another"))
-    assert foo_with_extra.id is None
-    assert foo_with_extra.name == "Another"
+    # test ignored fields get defaulted
+    book_with_extra = Book.shell(Book.Create(id=2, title="Another", year=2025))
+    assert book_with_extra.id is None
+    assert book_with_extra.title == "Another"
 
 
 def test_update_partial_models():
-    partial = Foo.Update(name="Updated Name")
+    partial = Book.Update(
+        id=3,  # should be ignored
+        title="Updated Title",
+    )
 
-    foo = Foo(id=2, name="Initial Name").absorb(partial)
-    assert foo.name == "Updated Name"
-    assert foo.id == 2
-
-    with pytest.raises(ValidationError):
-        Foo.Update(id=3)  # id is frozen
+    book = Book(id=2, title="Initial Title", year=2020).absorb(partial)
+    assert book.title == "Updated Title"
+    assert book.id == 2

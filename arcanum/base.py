@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 from abc import ABC
 from contextvars import ContextVar
+from copy import copy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -178,24 +179,24 @@ class TransmuterMetaclass(ModelMetaclass):
 
         config = self.model_config.copy()
 
-        field_definitions: dict[str, tuple[Any, FieldInfo]] = {}
+        field_definitions = {}
         # TODO: include nested associations
         for field_name in set(
             self.__pydantic_fields__.keys()
             - self.model_identities.keys()
             - set(self.model_associations.keys())  # TODO: include nested associations
         ):
-            info = self.__pydantic_fields__[field_name]
+            info = copy(self.__pydantic_fields__[field_name])
             field_definitions[field_name] = (info.annotation, info)
 
         self.__transmuter_create_model__ = create_model(
             f"{self.__name__}Create",
             __config__=config,
             __module__=self.__module__,
-            **field_definitions,  # type: ignore
+            **field_definitions,
         )
 
-        return self.__transmuter_create_model__  # type: ignore
+        return self.__transmuter_create_model__
 
     @property
     def Update(self) -> type[BaseModel]:
@@ -204,22 +205,24 @@ class TransmuterMetaclass(ModelMetaclass):
 
         config = self.model_config.copy()
 
-        field_definitions: dict[str, tuple[Any, FieldInfo]] = {}
+        field_definitions = {}
         # TODO: include nested associations
         for field_name in set(
             self.__pydantic_fields__.keys() - set(self.model_associations.keys())
         ):
             info = self.__pydantic_fields__[field_name]
             if not info.frozen:
+                info = copy(info)
+                info.default = None
                 field_definitions[field_name] = (Optional[info.annotation], info)
 
         self.__transmuter_update_model__ = create_model(
             f"{self.__name__}Update",
             __config__=config,
             __module__=self.__module__,
-            **field_definitions,  # type: ignore
+            **field_definitions,
         )
-        return self.__transmuter_update_model__  # type: ignore
+        return self.__transmuter_update_model__
 
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
