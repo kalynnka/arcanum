@@ -29,6 +29,7 @@ from sqlalchemy.orm.session import (
     _SessionBind,
     _SessionBindKey,
 )
+from sqlalchemy.orm.util import Bundle
 from sqlalchemy.sql import Executable, Select, functions, select
 from sqlalchemy.sql._typing import (
     _ColumnExpressionArgument,
@@ -58,9 +59,13 @@ def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
     entities: list[type[Any]] = []
     if isinstance(statement, Select):
         for desc in statement.column_descriptions:
-            if type := desc.get("type"):
-                transmuter = BaseTransmuter.transmuter_formulars.reverse.get(type)
-                entities.append(transmuter or type.python_type)
+            if (expr := desc.get("expr")) and (type := desc.get("type")):
+                # Bundle types (For example, used by selectinload for pk grouping) return tuple[*]
+                if type is Bundle:
+                    entities.append(tuple[*(e.type.python_type for e in expr.exprs)])
+                else:
+                    transmuter = BaseTransmuter.transmuter_formulars.reverse.get(type)
+                    entities.append(transmuter or type.python_type)
     elif isinstance(statement, (Insert, Update, Delete)):
         if statement._returning:
             for item in statement._returning:
@@ -182,15 +187,16 @@ class Session(SqlalchemySession):
             _add_event=_add_event,
         )
 
-        entities = resolve_statement_entities(statement)
-        if entities and any(
-            isinstance(e, type) and issubclass(e, BaseTransmuter) for e in entities
-        ):
-            return AdaptedResult(
-                real_result=result,
-                adapter=get_cached_adapter(tuple[*entities]),
-                scalar_adapter=get_cached_adapter(entities[0]),
-            )  # pyright: ignore[reportReturnType]
+        if not execution_options.get("sa_top_level_orm_context", False):
+            entities = resolve_statement_entities(statement)
+            if entities and any(
+                isinstance(e, type) and issubclass(e, BaseTransmuter) for e in entities
+            ):
+                return AdaptedResult(
+                    real_result=result,
+                    adapter=get_cached_adapter(tuple[*entities]),
+                    scalar_adapter=get_cached_adapter(entities[0]),
+                )  # pyright: ignore[reportReturnType]
 
         return result
 

@@ -251,7 +251,11 @@ class Relation(Association[Optional_T]):
             return None
         try:
             # TODO: provider not exist, or the provided value is None both return None
-            return getattr(self.__instance_provider__, self.used_name)
+            value = getattr(self.__instance_provider__, self.used_name)
+            print(
+                f"Got value {value.__class__} from transmuter {self.__instance__.__class__}'s provider {self.__instance_provider__.__class__}.{self.used_name}"
+            )
+            return value
         except MissingGreenlet as missing_greenlet_error:
             self.__loaded__ = False
             raise RuntimeError(
@@ -304,6 +308,8 @@ class Relation(Association[Optional_T]):
             return self.__payloads__
 
         if self.__payloads__ is not None and self.__payloads__.__transmuter_provided__:
+            # Already loaded by ORM (e.g., selectinload), no need to set back
+            pass
             self.__provided__ = self.__payloads__.__transmuter_provided__
         else:
             self.__payloads__ = self.validate_python(self.__provided__)
@@ -714,5 +720,5 @@ class PassiveRelationCollection(RelationCollection[T]):
         return self.__provided__.delete()
 
 
-Relationship = partial(Field, default_factory=Relation)
-Relationships = partial(Field, default_factory=RelationCollection)
+Relationship = partial(Field, default_factory=Relation, frozen=True)
+Relationships = partial(Field, default_factory=RelationCollection, frozen=True)

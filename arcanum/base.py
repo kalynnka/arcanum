@@ -260,7 +260,11 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     def __setattr__(self, name: str, value: Any):
         super().__setattr__(name, value)
-        if self.__transmuter_provided__ and name in type(self).model_fields:
+        if (
+            self.__transmuter_provided__
+            and name in type(self).model_fields
+            and name not in type(self).model_associations
+        ):
             setattr(self.__transmuter_provided__, name, getattr(self, name))
 
     def __init__(self, **data: Any):
@@ -277,6 +281,9 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             association = getattr(self, name)
             if isinstance(association, Association):
                 association.prepare(self, name)
+
+    def __hash__(self):
+        return hash(id(self))
 
     @classmethod
     def __clause_element__(cls):
@@ -300,7 +307,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
                         return cached
 
             preprocessed = cls.__transmuter_materia__.before_validator(data, info)
-            print("Preprocessed data:", data.__class__, id(data))
             instance = handler(preprocessed)
             instance.__transmuter_provided__ = data
             instance = cls.__transmuter_materia__.after_validator(instance, info)

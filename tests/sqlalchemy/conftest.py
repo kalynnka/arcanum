@@ -30,7 +30,11 @@ ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanum"
 
 @pytest_asyncio.fixture(scope="session")
 async def async_engine():
-    engine = create_async_engine(ASYNC_DB_URL, echo=True, future=True)
+    engine = create_async_engine(
+        ASYNC_DB_URL,
+        echo=True,
+        future=True,
+    )
 
     try:
         yield engine
@@ -40,7 +44,11 @@ async def async_engine():
 
 @pytest.fixture(scope="session")
 def engine(async_engine: AsyncEngine):
-    sync_engine = create_engine(DB_URL, echo=True, future=True)
+    sync_engine = create_engine(
+        DB_URL,
+        # echo=True,
+        future=True,
+    )
 
     try:
         yield sync_engine

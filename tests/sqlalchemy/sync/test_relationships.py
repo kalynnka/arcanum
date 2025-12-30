@@ -12,6 +12,8 @@ Tests:
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.exc import InvalidRequestError
@@ -399,7 +401,7 @@ class TestLazyLoading:
             session.add(author)
             session.flush()
             author.revalidate()
-            author_id = author["id"]
+            author_id = author.id
 
             # Clear session to force reload
             session.expunge_all()
@@ -407,9 +409,15 @@ class TestLazyLoading:
             # Load author without books
             loaded_author = session.get_one(Author, author_id)
 
-            # Accessing books should trigger lazy load
-            books = loaded_author.books
-            assert len(books) == 3
+            with patch.object(session, "execute", wraps=session.execute) as execute_spy:
+                # Accessing books should trigger lazy load
+                books = loaded_author.books
+                assert len(books) == 3
+
+                # Should have executed at least one SELECT for lazy loading books
+                assert execute_spy.call_count == 1, (
+                    "Expected lazy load to trigger SQL execution"
+                )
 
     def test_lazy_load_single_object(self, engine: Engine):
         """Test lazy loading single object (M-1 relation)."""
@@ -423,7 +431,7 @@ class TestLazyLoading:
             session.add(book)
             session.flush()
             book.revalidate()
-            book_id = book["id"]
+            book_id = book.id
 
             # Clear session
             session.expunge_all()
@@ -431,8 +439,14 @@ class TestLazyLoading:
             # Load book
             loaded_book = session.get_one(Book, book_id)
 
-            # Accessing author should lazy load
-            assert loaded_book.author.value.name == "Lazy Single Author"
+            with patch.object(session, "execute", wraps=session.execute) as execute_spy:
+                # Accessing author should lazy load
+                assert loaded_book.author.value.name == "Lazy Single Author"
+
+                # Should have executed at least one SELECT for lazy loading author
+                assert execute_spy.call_count == 1, (
+                    "Expected lazy load to trigger SQL execution"
+                )
 
 
 class TestEagerLoading:
@@ -462,8 +476,6 @@ class TestEagerLoading:
             books = session.execute(stmt).scalars().all()
 
             assert len(books) == 5
-
-            # Access all authors without additional queries
             for book in books:
                 assert book.author.value is not None
 
@@ -481,6 +493,7 @@ class TestEagerLoading:
 
             session.add(author)
             session.flush()
+            author.revalidate()
             author_id = author.id
 
             # Clear session
@@ -503,6 +516,7 @@ class TestEagerLoading:
             author = Author(name="Selectin M-M Author", field="Literature")
             publisher = Publisher(name="Selectin M-M Pub", country="USA")
 
+            book_ids = []
             for i in range(3):
                 book = Book(title=f"Selectin M-M Book {i}", year=2024)
                 book.author.value = author
@@ -515,14 +529,23 @@ class TestEagerLoading:
                 session.add(book)
 
             session.flush()
+            # Get book IDs after flush
+            for book in author.books:
+                book.revalidate()
+                book_ids.append(book.id)
 
             # Clear session
             session.expunge_all()
 
-            # Load books with categories
-            stmt = select(Book).options(selectinload(models.Book.categories))
+            # Load books with categories (filter to our books only)
+            stmt = (
+                select(Book)
+                .where(Book["id"].in_(book_ids))
+                .options(selectinload(models.Book.categories))
+            )
             books = session.execute(stmt).scalars().all()
 
+            assert len(books) == 3
             # Categories should be loaded
             for book in books:
                 assert len(book.categories) == 2
