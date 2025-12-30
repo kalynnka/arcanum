@@ -17,6 +17,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import joinedload, raiseload, selectinload
 
+from arcanum.association import Relation, RelationCollection
 from arcanum.materia.sqlalchemy import Session
 from tests import models
 from tests.schemas import (
@@ -245,7 +246,7 @@ class TestManyToManyRelationships:
 
             # Access categories through book
             assert len(book.categories) == 3
-            cat_names = {c["name"] for c in book.categories}
+            cat_names = {c.name for c in book.categories}
             assert "M-M Fiction" in cat_names
             assert "M-M Drama" in cat_names
             assert "M-M Classic" in cat_names
@@ -258,13 +259,16 @@ class TestManyToManyRelationships:
             publisher = Publisher(name="Sci-Fi Pub", country="USA")
 
             for i in range(4):
-                book = Book(title=f"Sci-Fi Book {i}", year=2024)
-                book.author.value = author
-                book.publisher.value = publisher
-                book.categories.append(category)
-                # SQLAlchemy backref handles the other direction
+                book = Book(
+                    title=f"Sci-Fi Book {i}",
+                    year=2024,
+                    author=Relation(author),
+                    publisher=Relation(publisher),
+                    categories=RelationCollection([category]),
+                )
+                session.add(book)
 
-            session.add(category)
+            # session.add(category)
             session.flush()
             category.revalidate()
 
@@ -276,23 +280,25 @@ class TestManyToManyRelationships:
         with Session(engine) as session:
             author = Author(name="Bidir M-M Author", field="History")
             publisher = Publisher(name="Bidir M-M Pub", country="UK")
-            book = Book(title="Bidir M-M Book", year=2024)
-            book.author.value = author
-            book.publisher.value = publisher
+            category = Category(name="Bidir M-M Cat", description="Test category")
 
-            cat = Category(name="Bidir M-M Cat", description="Test category")
+            book = Book(
+                title="Bidir M-M Book",
+                year=2024,
+                author=Relation(author),
+                publisher=Relation(publisher),
+            )
 
-            book.categories.append(cat)
-            # SQLAlchemy backref handles the other direction
+            book.categories.append(category)
 
             session.add(book)
             session.flush()
             book.revalidate()
-            cat.revalidate()
+            category.revalidate()
 
             # Both directions should work
-            assert cat in book.categories
-            assert book in cat.books
+            assert category in book.categories
+            assert book in category.books
 
     def test_many_to_many_remove(self, engine: Engine):
         """Test removing from M-M relationship."""

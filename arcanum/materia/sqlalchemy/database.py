@@ -277,23 +277,6 @@ class Session(SqlalchemySession):
         self._validation_context.clear()
         return super().expunge_all()
 
-    # def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
-    #     self._validation_context[instance.__transmuter_provided__] = instance
-    #     super().add(instance, _warn)
-    #     pass
-
-    # def _save_or_update_state(self, state: InstanceState[Any]) -> None:
-    #     state._orphaned_outside_of_session = False
-    #     self._save_or_update_impl(state)
-
-    #     mapper = _state_mapper(state)
-    #     for o, m, st_, dct_ in mapper.cascade_iterator(
-    #         "save-update", state, halt_on=self._contains_state
-    #     ):
-    #         if o not in self._validation_context:
-    #             self._validation_context[o] = validation_context_holder
-    #         self._save_or_update_impl(st_)
-
     def refresh(
         self,
         instance: BaseTransmuter,

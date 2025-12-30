@@ -501,20 +501,20 @@ class RelationCollection(list[T], Association[T]):
     def __setitem__(self, key: slice, value: T | Iterable[T]):
         if isinstance(value, Iterable):
             items = self.validate_python(value)
-            if self.__provided__:
+            if self.__provided__ is not None:
                 self.__provided__[key] = [
                     item.__transmuter_provided__ for item in items
                 ]
             super().__setitem__(key, items)
         else:
             item = self.validate_python(value)
-            if self.__provided__:
+            if self.__provided__ is not None:
                 self.__provided__[key] = item.__transmuter_provided__
             super().__setitem__(key, item)
 
     @ensure_loaded
     def __delitem__(self, key: slice):
-        if self.__provided__:
+        if self.__provided__ is not None:
             self.__provided__.__delitem__(key)
         super().__delitem__(key)
 
@@ -582,7 +582,7 @@ class RelationCollection(list[T], Association[T]):
     @ensure_loaded
     def append(self, object: T):
         object = self.validate_python(object)
-        if self.__provided__:
+        if self.__provided__ is not None:
             self.__provided__.append(
                 object.__transmuter_provided__
                 if hasattr(object, "__transmuter_provided__")
@@ -606,7 +606,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def clear(self):
-        if self.__provided__:
+        if self.__provided__ is not None:
             self.__provided__.clear()
         super().clear()
 
@@ -627,21 +627,21 @@ class RelationCollection(list[T], Association[T]):
     @ensure_loaded
     def insert(self, index: SupportsIndex, object: T):
         object = self.validate_python(object)
-        if self.__provided__:
+        if self.__provided__ is not None:
             self.__provided__.insert(index, object.__transmuter_provided__)
         super().insert(index, object)
 
     @ensure_loaded
     def pop(self, index: SupportsIndex = -1):
         item = super().pop(index)
-        if self.__provided__:
+        if self.__provided__ is not None:
             self.__provided__.remove(item.__transmuter_provided__)
         return item
 
     @ensure_loaded
     def remove(self, value: T):
         item: T = self.validate_python(value)
-        if self.__provided__:
+        if self.__provided__ is not None:
             self.__provided__.remove(item.__transmuter_provided__)
         super().remove(value)
 
