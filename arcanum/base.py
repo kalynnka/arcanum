@@ -7,6 +7,7 @@ from copy import copy
 from typing import (
     TYPE_CHECKING,
     Any,
+    Generator,
     Optional,
     Self,
     TypeVar,
@@ -41,7 +42,10 @@ T = TypeVar("T", bound="BaseTransmuter")
 M = TypeVar("M", bound="TransmuterMetaclass")
 
 
-class LoadedData: ...
+ValidationContextT = WeakValueDictionary[Any, "BaseTransmuter"]
+ValidateContextGeneratorT = contextlib._GeneratorContextManager[
+    ValidationContextT, None, None
+]
 
 
 validated: ContextVar[WeakValueDictionary[Any, BaseTransmuter]] = ContextVar(
@@ -49,12 +53,20 @@ validated: ContextVar[WeakValueDictionary[Any, BaseTransmuter]] = ContextVar(
 )
 
 
+class ValidationContextHolder: ...
+
+
+validation_context_holder = ValidationContextHolder()
+
+
 @contextlib.contextmanager
-def validation_context():
-    context: WeakValueDictionary[Any, BaseTransmuter] = WeakValueDictionary()
-    token = validated.set(context)
+def validation_context(
+    context: Optional[WeakValueDictionary[Any, BaseTransmuter]] = None,
+) -> Generator[ValidationContextT, None, None]:
+    validated_ = context if context is not None else WeakValueDictionary()
+    token = validated.set(validated_)
     try:
-        yield context
+        yield validated_
     finally:
         validated.reset(token)
 
@@ -258,6 +270,7 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             self.__transmuter_provided__ = provider(
                 **self.model_dump(exclude=set(type(self).model_associations.keys()))
             )
+            validated.get()[self.__transmuter_provided__] = self
         else:
             self.__transmuter_provided__ = None
         for name in type(self).model_associations:
@@ -279,18 +292,20 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         ):
             context = validated.get()
             if cached := context.get(data):
-                # if the cached instance is in revalidating state, let it through to sync orm state
-                if not cached._revalidating:
-                    return cached
-                else:
-                    cached._revalidating = False
+                if cached is not validation_context_holder:
+                    # if the cached instance is in revalidating state, let it through to sync orm state
+                    if cached._revalidating:
+                        cached._revalidating = False
+                    else:
+                        return cached
 
             preprocessed = cls.__transmuter_materia__.before_validator(data, info)
+            print("Preprocessed data:", data.__class__, id(data))
             instance = handler(preprocessed)
             instance.__transmuter_provided__ = data
             instance = cls.__transmuter_materia__.after_validator(instance, info)
 
-            if not cached:
+            if not cached or cached is validation_context_holder:
                 context[data] = instance
         else:
             # normal initialization

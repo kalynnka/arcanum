@@ -140,17 +140,18 @@ class TestOneToManyRelationships:
             author = Author(name="Prolific Author", field="Literature")
             publisher = Publisher(name="1-M Publisher", country="USA")
 
-            book = Book(title="A Book", year=2024)
-            book.author.value = author
-            book.publisher.value = publisher
+            for i in range(3):
+                book = Book(title="A Book", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
 
             session.add(author)
-            # session.add(publisher)
+            session.add(publisher)
             session.flush()
             author.revalidate()
 
             # Access books through author
-            assert len(author.books) == 1
+            assert len(author.books) == 3
             assert all(isinstance(b, Book) for b in author.books)
 
     def test_book_to_author_backward(self, engine: Engine):
@@ -180,6 +181,7 @@ class TestOneToManyRelationships:
                 book.author.value = author
                 book.publisher.value = publisher
 
+            session.add(author)
             session.add(publisher)
             session.flush()
             publisher.revalidate()
@@ -203,8 +205,10 @@ class TestOneToManyRelationships:
             # SQLAlchemy backref handles the append automatically
 
             session.add(author)
+            session.add(publisher)
             session.flush()
             author.revalidate()
+            book1.revalidate()
 
             assert len(author.books) == 2
 
@@ -214,7 +218,7 @@ class TestOneToManyRelationships:
             author.revalidate()
 
             assert len(author.books) == 1
-            assert author.books[0]["title"] == "Second Book"
+            assert author.books[0].title == "Second Book"
 
 
 class TestManyToManyRelationships:

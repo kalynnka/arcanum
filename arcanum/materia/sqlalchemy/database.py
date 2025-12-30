@@ -1,7 +1,16 @@
 from __future__ import annotations
 
-from contextlib import _GeneratorContextManager
-from typing import Any, Iterable, Optional, Self, Sequence, TypeVar, overload
+from typing import (
+    Any,
+    Iterable,
+    Literal,
+    Optional,
+    Self,
+    Sequence,
+    TypeVar,
+    Union,
+    overload,
+)
 from weakref import WeakValueDictionary
 
 from sqlalchemy import exc, inspect, tuple_, util
@@ -9,27 +18,40 @@ from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
 from sqlalchemy.engine.result import Result, ScalarResult
 from sqlalchemy.ext.asyncio import AsyncSession as SqlalchemyAsyncSession
+from sqlalchemy.orm import Query
 from sqlalchemy.orm import Session as SqlalchemySession
 from sqlalchemy.orm._typing import OrmExecuteOptionsParameter
 from sqlalchemy.orm.interfaces import ORMOption
-from sqlalchemy.orm.session import _BindArguments, _PKIdentityArgument
+from sqlalchemy.orm.session import (
+    JoinTransactionMode,
+    _BindArguments,
+    _PKIdentityArgument,
+    _SessionBind,
+    _SessionBindKey,
+)
 from sqlalchemy.sql import Executable, Select, functions, select
 from sqlalchemy.sql._typing import (
     _ColumnExpressionArgument,
     _ColumnExpressionOrStrLabelArgument,
+    _InfoType,
 )
-from sqlalchemy.sql.base import ExecutableOption
+from sqlalchemy.sql.base import ExecutableOption, _NoArg
 from sqlalchemy.sql.dml import Delete, Insert, Update, UpdateBase
 from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedReturnsRows
 
-from arcanum.base import BaseTransmuter, validation_context
+from arcanum.base import (
+    BaseTransmuter,
+    ValidateContextGeneratorT,
+    ValidationContextT,
+    validation_context,
+)
 from arcanum.expression import Expression
 from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
 from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
 
-ExpressionType = _ColumnExpressionArgument[bool] | Expression[Any]
+ExpressionT = _ColumnExpressionArgument[bool] | Expression[Any]
 
 
 def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
@@ -52,19 +74,52 @@ def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
 
 
 class Session(SqlalchemySession):
-    _validation_context: WeakValueDictionary[Any, BaseTransmuter] | None
-    _validation_context_manager: _GeneratorContextManager[
-        WeakValueDictionary[Any, BaseTransmuter]
-    ]
+    _validation_context: ValidationContextT
+    _validation_context_manager: ValidateContextGeneratorT | None
+
+    def __init__(
+        self,
+        bind: Optional[_SessionBind] = None,
+        *,
+        autoflush: bool = True,
+        future: Literal[True] = True,
+        expire_on_commit: bool = True,
+        autobegin: bool = True,
+        twophase: bool = False,
+        binds: Optional[dict[_SessionBindKey, _SessionBind]] = None,
+        enable_baked_queries: bool = True,
+        info: Optional[_InfoType] = None,
+        query_cls: Optional[type[Query[Any]]] = None,
+        autocommit: Literal[False] = False,
+        join_transaction_mode: JoinTransactionMode = "conditional_savepoint",
+        close_resets_only: Union[bool, _NoArg] = _NoArg.NO_ARG,
+    ) -> None:
+        super().__init__(
+            bind,
+            autoflush=autoflush,
+            future=future,
+            expire_on_commit=expire_on_commit,
+            autobegin=autobegin,
+            twophase=twophase,
+            binds=binds,
+            enable_baked_queries=enable_baked_queries,
+            info=info,
+            query_cls=query_cls,
+            autocommit=autocommit,
+            join_transaction_mode=join_transaction_mode,
+            close_resets_only=close_resets_only,
+        )
+        self._validation_context = WeakValueDictionary()
+        self._validation_context_manager = None
 
     def __enter__(self):
-        self._validation_context_manager = validation_context()
-        self._validation_context = self._validation_context_manager.__enter__()
+        self._validation_context_manager = validation_context(self._validation_context)
+        self._validation_context_manager.__enter__()
         return super().__enter__()
 
     def __exit__(self, exc_type, exc_value, traceback) -> Optional[bool]:
-        self._validation_context_manager.__exit__(exc_type, exc_value, traceback)
-        self._validation_context = None
+        if self._validation_context_manager is not None:
+            self._validation_context_manager.__exit__(exc_type, exc_value, traceback)
         return super().__exit__(exc_type, exc_value, traceback)
 
     def __iter__(self) -> Iterable[BaseTransmuter]:
@@ -214,20 +269,30 @@ class Session(SqlalchemySession):
         ).scalars()
 
     def expunge(self, instance: BaseTransmuter) -> None:
-        if self._validation_context is not None:
-            if instance.__transmuter_provided__ in self._validation_context:
-                del self._validation_context[instance.__transmuter_provided__]
+        if instance.__transmuter_provided__ in self._validation_context:
+            del self._validation_context[instance.__transmuter_provided__]
         super().expunge(instance.__transmuter_provided__)
 
     def expunge_all(self) -> None:
-        if self._validation_context is not None:
-            self._validation_context.clear()
+        self._validation_context.clear()
         return super().expunge_all()
 
-    def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
-        super().add(instance, _warn)
-        if self._validation_context is not None:
-            self._validation_context[instance.__transmuter_provided__] = instance
+    # def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
+    #     self._validation_context[instance.__transmuter_provided__] = instance
+    #     super().add(instance, _warn)
+    #     pass
+
+    # def _save_or_update_state(self, state: InstanceState[Any]) -> None:
+    #     state._orphaned_outside_of_session = False
+    #     self._save_or_update_impl(state)
+
+    #     mapper = _state_mapper(state)
+    #     for o, m, st_, dct_ in mapper.cascade_iterator(
+    #         "save-update", state, halt_on=self._contains_state
+    #     ):
+    #         if o not in self._validation_context:
+    #             self._validation_context[o] = validation_context_holder
+    #         self._save_or_update_impl(st_)
 
     def refresh(
         self,
@@ -235,9 +300,8 @@ class Session(SqlalchemySession):
         attribute_names: Iterable[str] | None = None,
         with_for_update: ForUpdateArg | None | bool | dict[str, Any] = None,
     ) -> None:
-        if self._validation_context is not None:
-            if instance.__transmuter_provided__ not in self._validation_context:
-                self._validation_context[instance.__transmuter_provided__] = instance
+        if instance.__transmuter_provided__ not in self._validation_context:
+            self._validation_context[instance.__transmuter_provided__] = instance
         super().refresh(instance, attribute_names, with_for_update)
         instance.revalidate()
 
@@ -253,8 +317,7 @@ class Session(SqlalchemySession):
 
     def enable_relationship_loading(self, obj: BaseTransmuter) -> None:
         super().enable_relationship_loading(obj.__transmuter_provided__)
-        if self._validation_context is not None:
-            self._validation_context[obj.__transmuter_provided__] = obj
+        self._validation_context[obj.__transmuter_provided__] = obj
 
     def get(
         self,
@@ -325,7 +388,7 @@ class Session(SqlalchemySession):
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -346,7 +409,7 @@ class Session(SqlalchemySession):
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -368,7 +431,7 @@ class Session(SqlalchemySession):
         entity: type[T],
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -442,7 +505,7 @@ class Session(SqlalchemySession):
     def count(
         self,
         entity: type[T],
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -465,7 +528,7 @@ class Session(SqlalchemySession):
         # cursor: UUID | None = None, # TODO: re-enable cursor pagination when identity solution is clarified
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -497,7 +560,7 @@ class Session(SqlalchemySession):
         size: int | None = 10,
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -526,44 +589,34 @@ class AsyncSession(SqlalchemyAsyncSession):
     sync_session: Session
 
     async def __aenter__(self) -> Self:
-        self._validation_context_manager = validation_context()
-        self._validation_context = self._validation_context_manager.__enter__()
+        self._validation_context_manager = validation_context(self._validation_context)
+        self._validation_context_manager.__enter__()
         await super().__aenter__()
         return self
 
     async def __aexit__(self, type_: Any, value: Any, traceback: Any) -> None:
-        self._validation_context_manager.__exit__(type_, value, traceback)
-        self._validation_context = None
+        if self._validation_context_manager is not None:
+            self._validation_context_manager.__exit__(type_, value, traceback)
+            self._validation_context_manager = None
         await super().__aexit__(type_, value, traceback)
 
     @property
-    def _validation_context(self) -> WeakValueDictionary[Any, BaseTransmuter] | None:
+    def _validation_context(self) -> ValidationContextT:
         return self.sync_session._validation_context
 
-    @_validation_context.setter
-    def _validation_context(
-        self, value: WeakValueDictionary[Any, BaseTransmuter] | None
-    ) -> None:
-        self.sync_session._validation_context = value
-
     @property
-    def _validation_context_manager(
-        self,
-    ) -> _GeneratorContextManager[WeakValueDictionary[Any, BaseTransmuter]]:
+    def _validation_context_manager(self) -> ValidateContextGeneratorT | None:
         return self.sync_session._validation_context_manager
 
     @_validation_context_manager.setter
-    def _validation_context_manager(
-        self,
-        value: _GeneratorContextManager[WeakValueDictionary[Any, BaseTransmuter]],
-    ) -> None:
+    def _validation_context_manager(self, value: ValidateContextGeneratorT | None):
         self.sync_session._validation_context_manager = value
 
     async def one(
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -580,7 +633,7 @@ class AsyncSession(SqlalchemyAsyncSession):
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -598,7 +651,7 @@ class AsyncSession(SqlalchemyAsyncSession):
         entity: type[T],
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -631,7 +684,7 @@ class AsyncSession(SqlalchemyAsyncSession):
     async def count(
         self,
         entity: type[T],
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -650,7 +703,7 @@ class AsyncSession(SqlalchemyAsyncSession):
         offset: int | None = None,
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionType] | None = None,
+        expressions: Iterable[ExpressionT] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
