@@ -118,7 +118,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
 
     def partitions(self, size: int | None = None) -> Iterator[tuple[Row[_TP]]]:
         while True:
-            partition = self._manyrow_getter(size)
+            partition = self._manyrow_getter(self, size)
             if partition:
                 yield tuple(self.adapter.validate_python(row) for row in partition)
             else:
@@ -294,7 +294,7 @@ class AdaptedScalarResult(ScalarResult[_R]):
 
     def partitions(self, size: int | None = None) -> Iterator[tuple[_R]]:
         while True:
-            partition = self._manyrow_getter(size)
+            partition = self._manyrow_getter(self, size)
             if partition:
                 yield tuple(
                     self.scalar_adapter.validate_python(scalar) for scalar in partition
