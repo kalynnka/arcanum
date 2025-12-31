@@ -17,7 +17,7 @@ from typing import (
     get_type_hints,
     runtime_checkable,
 )
-from weakref import WeakValueDictionary, ref
+from weakref import WeakKeyDictionary, ref
 
 from pydantic import (
     BaseModel,
@@ -44,6 +44,29 @@ T = TypeVar("T", bound="BaseTransmuter")
 M = TypeVar("M", bound="TransmuterMetaclass")
 
 
+ValidationContextT = WeakKeyDictionary[Any, "BaseTransmuter"]
+ValidateContextGeneratorT = contextlib._GeneratorContextManager[
+    ValidationContextT, None, None
+]
+
+
+validated: ContextVar[ValidationContextT] = ContextVar(
+    "validated", default=WeakKeyDictionary()
+)
+
+
+@contextlib.contextmanager
+def validation_context(
+    context: Optional[WeakKeyDictionary] = None,
+) -> Generator[ValidationContextT, None, None]:
+    validated_ = context if context is not None else WeakKeyDictionary()
+    token = validated.set(validated_)
+    try:
+        yield validated_
+    finally:
+        validated.reset(token)
+
+
 @runtime_checkable
 class TransmuterProxied(Protocol):
     transmuter_proxy: BaseTransmuter | None
@@ -61,29 +84,6 @@ class TransmuterProxiedMixin:
     @transmuter_proxy.setter
     def transmuter_proxy(self, value: BaseTransmuter) -> None:
         self._transmuter_proxy = ref(value)
-
-
-ValidationContextT = WeakValueDictionary[Any, "BaseTransmuter"]
-ValidateContextGeneratorT = contextlib._GeneratorContextManager[
-    ValidationContextT, None, None
-]
-
-
-validated: ContextVar[ValidationContextT] = ContextVar(
-    "validated", default=WeakValueDictionary()
-)
-
-
-@contextlib.contextmanager
-def validation_context(
-    context: Optional[ValidationContextT] = None,
-) -> Generator[ValidationContextT, None, None]:
-    validated_ = context if context is not None else WeakValueDictionary()
-    token = validated.set(validated_)
-    try:
-        yield validated_
-    finally:
-        validated.reset(token)
 
 
 class Identity:

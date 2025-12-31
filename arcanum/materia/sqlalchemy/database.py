@@ -11,7 +11,7 @@ from typing import (
     Union,
     overload,
 )
-from weakref import WeakValueDictionary
+from weakref import WeakKeyDictionary
 
 from sqlalchemy import exc, inspect, tuple_, util
 from sqlalchemy.engine.cursor import CursorResult
@@ -116,7 +116,7 @@ class Session(SqlalchemySession):
             join_transaction_mode=join_transaction_mode,
             close_resets_only=close_resets_only,
         )
-        self._validation_context = WeakValueDictionary()
+        self._validation_context = WeakKeyDictionary()
         self._validation_context_manager = None
 
     def __enter__(self):
