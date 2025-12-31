@@ -35,6 +35,11 @@ class SqlalchemyMateria(BaseMateria):
                 raise RuntimeError(
                     f"Transmuter {transmuter_cls.__name__} is already blessed with {self} in {self.__class__.__name__}"
                 )
+            # Check if materia implements TransmuterProxied by verifying required attributes
+            if not hasattr(materia, "transmuter_proxy"):
+                raise TypeError(
+                    "SQLAlchemyMateria require materia must implement TransmuterProxied."
+                )
             self.formulars[transmuter_cls] = materia
             return transmuter_cls
 

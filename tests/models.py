@@ -3,8 +3,10 @@ from __future__ import annotations
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from arcanum.base import TransmuterProxiedMixin
 
-class Base(DeclarativeBase): ...
+
+class Base(DeclarativeBase, TransmuterProxiedMixin): ...
 
 
 # Secondary table for M-M relationship between Book and Category

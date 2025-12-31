@@ -18,9 +18,10 @@ from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
 from sqlalchemy.engine.result import Result, ScalarResult
 from sqlalchemy.ext.asyncio import AsyncSession as SqlalchemyAsyncSession
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import InstanceState, Query
 from sqlalchemy.orm import Session as SqlalchemySession
 from sqlalchemy.orm._typing import OrmExecuteOptionsParameter
+from sqlalchemy.orm.base import _state_mapper
 from sqlalchemy.orm.interfaces import ORMOption
 from sqlalchemy.orm.session import (
     JoinTransactionMode,
@@ -42,6 +43,7 @@ from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedRet
 
 from arcanum.base import (
     BaseTransmuter,
+    TransmuterProxied,
     ValidateContextGeneratorT,
     ValidationContextT,
     validation_context,
@@ -132,7 +134,14 @@ class Session(SqlalchemySession):
             raise RuntimeError(
                 "Active validation context is requried, please use a context manager 'with Session() as session' to create a session context."
             )
-        return [self._validation_context[item] for item in super().__iter__()]
+        for instance in super().__iter__():
+            if instance in self._validation_context:
+                yield self._validation_context[instance]
+            if isinstance(instance, TransmuterProxied) and (
+                transmuter := instance.transmuter_proxy
+            ):
+                yield transmuter
+            yield instance  # type: ignore[reportUnreachable]
 
     @overload
     def execute(
@@ -282,6 +291,25 @@ class Session(SqlalchemySession):
     def expunge_all(self) -> None:
         self._validation_context.clear()
         return super().expunge_all()
+
+    def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
+        self._validation_context[instance.__transmuter_provided__] = instance
+        super().add(instance.__transmuter_provided__, _warn=_warn)
+
+    def _save_or_update_state(
+        self,
+        state: InstanceState,
+    ) -> None:
+        state._orphaned_outside_of_session = False
+        self._save_or_update_impl(state)
+
+        mapper = _state_mapper(state)
+        for o, m, st_, dct_ in mapper.cascade_iterator(
+            "save-update", state, halt_on=self._contains_state
+        ):
+            if isinstance(o, TransmuterProxied) and (transmuter := o.transmuter_proxy):
+                self._validation_context[o] = transmuter
+            self._save_or_update_impl(st_)
 
     def refresh(
         self,

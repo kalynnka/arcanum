@@ -526,6 +526,7 @@ class TestEagerLoading:
                 cat2 = Category(name=f"Selectin Cat {i}-2", description="Category 2")
                 book.categories.extend([cat1, cat2])
 
+                print(id(book))
                 session.add(book)
 
             session.flush()
@@ -549,6 +550,70 @@ class TestEagerLoading:
             # Categories should be loaded
             for book in books:
                 assert len(book.categories) == 2
+
+    def test_selectinload_many_to_many_with_backref(self, engine: Engine):
+        """Test selectinload M-M where backref creates circular validation.
+
+        This tests the scenario where:
+        - Book has categories (M-M)
+        - Category has books (backref)
+        - When loading Book with selectinload(categories), SQLAlchemy also loads
+          the Category.books backref which points back to Book
+        - This creates a circular validation: Book -> Category -> Book
+
+        The validation context should prevent infinite recursion by caching
+        already-validated instances.
+        """
+        with Session(engine) as session:
+            author = Author(name="Backref M-M Author", field="Physics")
+            publisher = Publisher(name="Backref M-M Pub", country="USA")
+
+            # Create books that share categories (to test backref loading)
+            cat_shared = Category(
+                name="Shared Category", description="Shared by multiple books"
+            )
+
+            book1 = Book(title="Backref Book 1", year=2024)
+            book1.author.value = author
+            book1.publisher.value = publisher
+            book1.categories.append(cat_shared)
+
+            book2 = Book(title="Backref Book 2", year=2024)
+            book2.author.value = author
+            book2.publisher.value = publisher
+            book2.categories.append(cat_shared)
+
+            session.add(book1)
+            session.add(book2)
+            session.flush()
+
+            book1.revalidate()
+            book2.revalidate()
+            book1_id = book1.id
+            book2_id = book2.id
+
+            # Clear session to force reload
+            session.expunge_all()
+
+            # Load book1 with selectinload on categories
+            # This will load cat_shared, which has a backref to both book1 and book2
+            stmt = (
+                select(Book)
+                .where(Book["id"] == book1_id)
+                .options(selectinload(models.Book.categories))
+            )
+            loaded_book = session.execute(stmt).scalars().one()
+
+            # Should have loaded the shared category
+            assert len(loaded_book.categories) == 1
+            assert loaded_book.categories[0].name == "Shared Category"
+
+            # The category's books backref should contain both books
+            # This tests that circular validation works
+            loaded_cat = loaded_book.categories[0]
+            assert len(loaded_cat.books) == 2
+            book_titles = {b.title for b in loaded_cat.books}
+            assert book_titles == {"Backref Book 1", "Backref Book 2"}
 
 
 class TestRaiseOnSQLBehavior:

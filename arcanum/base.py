@@ -9,13 +9,15 @@ from typing import (
     Any,
     Generator,
     Optional,
+    Protocol,
     Self,
     TypeVar,
     dataclass_transform,
     get_origin,
     get_type_hints,
+    runtime_checkable,
 )
-from weakref import WeakValueDictionary
+from weakref import WeakValueDictionary, ref
 
 from pydantic import (
     BaseModel,
@@ -42,26 +44,39 @@ T = TypeVar("T", bound="BaseTransmuter")
 M = TypeVar("M", bound="TransmuterMetaclass")
 
 
+@runtime_checkable
+class TransmuterProxied(Protocol):
+    transmuter_proxy: BaseTransmuter | None
+
+
+class TransmuterProxiedMixin:
+    """Protocol for materia provided objects proxied by Transmuter."""
+
+    _transmuter_proxy: ref[BaseTransmuter] | None = None
+
+    @property
+    def transmuter_proxy(self) -> BaseTransmuter | None:
+        return self._transmuter_proxy() if self._transmuter_proxy else None
+
+    @transmuter_proxy.setter
+    def transmuter_proxy(self, value: BaseTransmuter) -> None:
+        self._transmuter_proxy = ref(value)
+
+
 ValidationContextT = WeakValueDictionary[Any, "BaseTransmuter"]
 ValidateContextGeneratorT = contextlib._GeneratorContextManager[
     ValidationContextT, None, None
 ]
 
 
-validated: ContextVar[WeakValueDictionary[Any, BaseTransmuter]] = ContextVar(
+validated: ContextVar[ValidationContextT] = ContextVar(
     "validated", default=WeakValueDictionary()
 )
 
 
-class ValidationContextHolder: ...
-
-
-validation_context_holder = ValidationContextHolder()
-
-
 @contextlib.contextmanager
 def validation_context(
-    context: Optional[WeakValueDictionary[Any, BaseTransmuter]] = None,
+    context: Optional[ValidationContextT] = None,
 ) -> Generator[ValidationContextT, None, None]:
     validated_ = context if context is not None else WeakValueDictionary()
     token = validated.set(validated_)
@@ -165,7 +180,7 @@ class TransmuterMetaclass(ModelMetaclass):
         return active_materia.get()
 
     @property
-    def __transmuter_provider__(self) -> type[Any] | None:
+    def __transmuter_provider__(self) -> type[TransmuterProxied] | None:
         return self.__transmuter_materia__[self]
 
     @property
@@ -181,7 +196,7 @@ class TransmuterMetaclass(ModelMetaclass):
     @property
     def transmuter_formulars(
         self,
-    ) -> BidirectonDict[TransmuterMetaclass, type[Any]]:
+    ) -> BidirectonDict[TransmuterMetaclass, type[TransmuterProxied]]:
         return self.__transmuter_materia__.formulars
 
     @property
@@ -239,7 +254,7 @@ class TransmuterMetaclass(ModelMetaclass):
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     _revalidating: bool = PrivateAttr(default=False)
-    __transmuter_provided__: Optional[Any] = NoInitField(init=False)
+    __transmuter_provided__: Optional[TransmuterProxied] = NoInitField(init=False)
 
     def __getattribute__(self, name: str) -> Any:
         value: Any = object.__getattribute__(self, name)
@@ -269,14 +284,16 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        provider = type(self).__transmuter_provider__
-        if provider is not None:
-            self.__transmuter_provided__ = provider(
+
+        if (provider := type(self).__transmuter_provider__) is not None:
+            provided = provider(
                 **self.model_dump(exclude=set(type(self).model_associations.keys()))
             )
-            validated.get()[self.__transmuter_provided__] = self
+            provided.transmuter_proxy = self
+            self.__transmuter_provided__ = provided
         else:
             self.__transmuter_provided__ = None
+
         for name in type(self).model_associations:
             association = getattr(self, name)
             if isinstance(association, Association):
@@ -298,20 +315,17 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             data, cls.__transmuter_provider__
         ):
             context = validated.get()
-            if cached := context.get(data):
-                if cached is not validation_context_holder:
-                    # if the cached instance is in revalidating state, let it through to sync orm state
-                    if cached._revalidating:
-                        cached._revalidating = False
-                    else:
-                        return cached
+            cached = context.get(data)
 
-            preprocessed = cls.__transmuter_materia__.before_validator(data, info)
-            instance = handler(preprocessed)
-            instance.__transmuter_provided__ = data
-            instance = cls.__transmuter_materia__.after_validator(instance, info)
+            instance = cached or data.transmuter_proxy
+            if instance is None or instance._revalidating:
+                preprocessed = cls.__transmuter_materia__.before_validator(data, info)
+                instance = handler(preprocessed)
+                instance.__transmuter_provided__ = data
+                data.transmuter_proxy = instance
+                instance = cls.__transmuter_materia__.after_validator(instance, info)
 
-            if not cached or cached is validation_context_holder:
+            if not cached:
                 context[data] = instance
         else:
             # normal initialization
