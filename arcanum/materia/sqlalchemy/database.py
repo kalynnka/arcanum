@@ -61,13 +61,22 @@ def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
     entities: list[type[Any]] = []
     if isinstance(statement, Select):
         for desc in statement.column_descriptions:
-            if (expr := desc.get("expr")) and (type := desc.get("type")):
+            if ((expr := desc.get("expr")) is not None) and (
+                (type := desc.get("type")) is not None
+            ):
                 # Bundle types (For example, used by selectinload for pk grouping) return tuple[*]
                 if type is Bundle:
                     entities.append(tuple[*(e.type.python_type for e in expr.exprs)])
                 else:
                     transmuter = BaseTransmuter.transmuter_formulars.reverse.get(type)
-                    entities.append(transmuter or type.python_type)
+                    if transmuter:
+                        entities.append(transmuter)
+                    else:
+                        try:
+                            entities.append(type.python_type)
+                        except NotImplementedError:
+                            # NullType and other types without python_type
+                            entities.append(object)
     elif isinstance(statement, (Insert, Update, Delete)):
         if statement._returning:
             for item in statement._returning:
@@ -76,7 +85,11 @@ def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
                 ):
                     entities.append(transmuter)
                 else:
-                    entities.append(item.type.python_type)  # type: ignore[attr-defined]
+                    try:
+                        entities.append(item.type.python_type)  # type: ignore[attr-defined]
+                    except NotImplementedError:
+                        # NullType and other types without python_type
+                        entities.append(object)
     return entities
 
 
@@ -321,6 +334,10 @@ class Session(SqlalchemySession):
             self._validation_context[instance.__transmuter_provided__] = instance
         super().refresh(instance, attribute_names, with_for_update)
         instance.revalidate()
+
+    def rollback(self) -> None:
+        super().rollback()
+        self._validation_context.clear()
 
     def merge(
         self,

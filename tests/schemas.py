@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Literal, Optional
+from uuid import UUID
 
 from pydantic import ConfigDict, Field
 
@@ -17,9 +18,13 @@ from tests import models
 sqlalchemy_materia = SqlalchemyMateria()
 
 
+class TestIdMixin:
+    test_id: Optional[UUID] = Field(default=None, frozen=True)
+
+
 # Publisher schema (1-M with Book)
 @sqlalchemy_materia.bless(models.Publisher)
-class Publisher(BaseTransmuter):
+class Publisher(TestIdMixin, BaseTransmuter):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
@@ -31,7 +36,7 @@ class Publisher(BaseTransmuter):
 
 # Author schema (1-M with Book)
 @sqlalchemy_materia.bless(models.Author)
-class Author(BaseTransmuter):
+class Author(BaseTransmuter, TestIdMixin):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
@@ -52,7 +57,7 @@ class Author(BaseTransmuter):
 
 # BookDetail schema (1-1 with Book)
 @sqlalchemy_materia.bless(models.BookDetail)
-class BookDetail(BaseTransmuter):
+class BookDetail(TestIdMixin, BaseTransmuter):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
@@ -66,7 +71,7 @@ class BookDetail(BaseTransmuter):
 
 # Category schema (M-M with Book)
 @sqlalchemy_materia.bless(models.Category)
-class Category(BaseTransmuter):
+class Category(TestIdMixin, BaseTransmuter):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
@@ -78,7 +83,7 @@ class Category(BaseTransmuter):
 
 # Translator schema (optional 1-1 with Book)
 @sqlalchemy_materia.bless(models.Translator)
-class Translator(BaseTransmuter):
+class Translator(TestIdMixin, BaseTransmuter):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
@@ -90,7 +95,7 @@ class Translator(BaseTransmuter):
 
 # Review schema (optional M-1 with Book)
 @sqlalchemy_materia.bless(models.Review)
-class Review(BaseTransmuter):
+class Review(TestIdMixin, BaseTransmuter):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
@@ -104,7 +109,7 @@ class Review(BaseTransmuter):
 
 # Book schema (M-1 with Author, M-1 with Publisher, 1-1 with BookDetail, M-M with Category, optional 1-1 with Translator, optional 1-M with Reviews)
 @sqlalchemy_materia.bless(models.Book)
-class Book(BaseTransmuter):
+class Book(TestIdMixin, BaseTransmuter):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)

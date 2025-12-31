@@ -46,7 +46,7 @@ async def async_engine():
 def engine(async_engine: AsyncEngine):
     sync_engine = create_engine(
         DB_URL,
-        # echo=True,
+        echo=True,
         future=True,
     )
 

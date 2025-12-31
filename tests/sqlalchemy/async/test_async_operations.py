@@ -29,18 +29,16 @@ class TestAsyncSessionContextManagement:
         self, async_engine: AsyncEngine
     ):
         """Test that async session auto-commits on successful exit."""
-        author_id = None
-
         async with AsyncSession(async_engine) as session:
             author = Author(name="Async Author", field="Physics")
             session.add(author)
             await session.flush()
-            author_id = author.id
 
         # Verify committed
+        author.revalidate()
         async with AsyncSession(async_engine) as session:
-            author = await session.get_one(Author, author_id)
-            assert author.name == "Async Author"
+            fetched = await session.get_one(Author, author.id)
+            assert fetched.name == "Async Author"
 
     @pytest.mark.asyncio
     async def test_async_session_rollback_on_exception(self, async_engine: AsyncEngine):
@@ -50,7 +48,6 @@ class TestAsyncSessionContextManagement:
                 author = Author(name="Rollback Test", field="Biology")
                 session.add(author)
                 await session.flush()
-                author_id = author.id
 
                 # Force exception
                 raise ValueError("Test exception")
@@ -75,10 +72,10 @@ class TestAsyncCRUDOperations:
             author = Author(name="Insert Author", field="Chemistry")
             session.add(author)
             await session.flush()
-            author_id = author.id
 
             # Select
-            fetched = await session.get_one(Author, author_id)
+            author.revalidate()
+            fetched = await session.get_one(Author, author.id)
             assert fetched.name == "Insert Author"
 
     @pytest.mark.asyncio
@@ -88,14 +85,14 @@ class TestAsyncCRUDOperations:
             author = Author(name="Update Test", field="Physics")
             session.add(author)
             await session.flush()
-            author_id = author.id
 
             # Update
             author.name = "Updated Async"
             await session.flush()
 
             # Verify
-            fetched = await session.get_one(Author, author_id)
+            author.revalidate()
+            fetched = await session.get_one(Author, author.id)
             assert fetched.name == "Updated Async"
 
     @pytest.mark.asyncio
@@ -105,14 +102,14 @@ class TestAsyncCRUDOperations:
             author = Author(name="Delete Test", field="Biology")
             session.add(author)
             await session.flush()
-            author_id = author.id
 
             # Delete
+            author.revalidate()
             await session.delete(author)
             await session.flush()
 
             # Verify deleted
-            stmt = select(Author).where(Author["id"] == author_id)
+            stmt = select(Author).where(Author["id"] == author.id)
             result = await session.execute(stmt)
             authors = result.scalars().all()
             assert len(authors) == 0
@@ -215,20 +212,20 @@ class TestAsyncRelationships:
 
             session.add(author)
             await session.flush()
-            author_id = author.id
 
         # Query with eager loading
+        author.revalidate()
         async with AsyncSession(async_engine) as session:
             stmt = (
                 select(Author)
-                .where(Author["id"] == author_id)
+                .where(Author["id"] == author.id)
                 .options(selectinload(Author.books))
             )
             result = await session.execute(stmt)
-            author = result.scalars().one()
+            fetched = result.scalars().one()
 
             # Books should be loaded without additional query
-            assert len(author.books) == 3
+            assert len(fetched.books) == 3
 
     @pytest.mark.asyncio
     async def test_async_many_to_many_relationship(self, async_engine: AsyncEngine):
@@ -247,21 +244,21 @@ class TestAsyncRelationships:
 
             session.add(book)
             await session.flush()
-            book_id = book.id
 
         # Query with relationship loading
+        book.revalidate()
         async with AsyncSession(async_engine) as session:
             stmt = (
                 select(Book)
-                .where(Book["id"] == book_id)
+                .where(Book["id"] == book.id)
                 .options(selectinload(Book.categories))
             )
             result = await session.execute(stmt)
-            book = result.scalars().one()
+            fetched = result.scalars().one()
 
             # Categories should be loaded
-            assert len(book.categories) == 2
-            cat_names = {cat.name for cat in book.categories}
+            assert len(fetched.categories) == 2
+            cat_names = {cat.name for cat in fetched.categories}
             assert cat_names == {"Async Cat 1", "Async Cat 2"}
 
 
@@ -306,13 +303,13 @@ class TestAsyncComplexQueries:
 
             session.add(author)
             await session.flush()
-            author_id = author.id
 
             # Aggregate query
+            author.revalidate()
             stmt = (
                 select(Author, func.count(Book["id"]))
                 .join(Book)
-                .where(Author["id"] == author_id)
+                .where(Author["id"] == author.id)
                 .group_by(Author["id"])
             )
             result = await session.execute(stmt)
@@ -336,8 +333,6 @@ class TestAsyncComplexQueries:
 
             session.add(publisher)
             await session.flush()
-            publisher_id = publ.revalidate()
-            publisher_id = publ["id"]
 
             # Subquery to get publishers with more than 2 books
             subq = (
@@ -352,5 +347,6 @@ class TestAsyncComplexQueries:
             result = await session.execute(stmt)
             publishers = result.scalars().all()
 
+            publisher.revalidate()
             assert len(publishers) == 1
-            assert publishers[0].id == publisher_id
+            assert publishers[0].id == publisher.id

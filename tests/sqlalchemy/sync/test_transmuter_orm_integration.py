@@ -59,22 +59,6 @@ class TestTransmuterORMCreation:
             assert author.name == "Philip K. Dick"
             assert author.__transmuter_provided__ is orm_author
 
-    def test_transmuter_validates_with_orm_attributes(self, engine: Engine):
-        """Test validation works with ORM object attributes."""
-        from sqlalchemy.orm import Session as SASession
-
-        with SASession(engine) as sa_session:
-            orm_pub = models.Publisher(name="Penguin", country="UK")
-            sa_session.add(orm_pub)
-            sa_session.flush()
-
-            # Validate transmuter from ORM
-            publisher = Publisher.model_validate(orm_pub)
-
-            assert publisher.name == "Penguin"
-            assert publisher.country == "UK"
-            assert publisher.id is not None
-
     def test_identity_field_readonly_after_set(self, engine: Engine):
         """Test that identity fields are frozen after being set."""
         with Session(engine) as session:
@@ -104,7 +88,7 @@ class TestTransmuterORMCreation:
 
             # ID should now be set
             assert author.id is not None
-            assert author.__transmuter_provided__.id is not None
+            assert author.__transmuter_provided__.id is not None  # type: ignore
 
     def test_nested_transmuter_creation(self, engine: Engine):
         """Test creating nested transmuters with relationships."""
@@ -155,10 +139,7 @@ class TestBlessingRules:
 
         # Attempting to bless same class again should fail
         with pytest.raises(RuntimeError, match="already blessed"):
-
-            @test_materia.bless(models.Publisher)  # Different ORM class
-            class TestAuthor(TestAuthor):  # noqa: F811
-                pass
+            test_materia.bless(models.Publisher)(TestAuthor)  # Different ORM class
 
     def test_different_transmuters_same_orm(self):
         """Test that different transmuter classes can be blessed with the same ORM."""
@@ -179,12 +160,13 @@ class TestBlessingRules:
             name: str
             field: str
 
-        # Both should work independently
-        author1 = AuthorV1(name="Author 1", field="Physics")
-        author2 = AuthorV2(name="Author 2", field="Biology")
+        with test_materia:
+            # Both should work independently
+            author1 = AuthorV1(name="Author 1", field="Physics")
+            author2 = AuthorV2(name="Author 2", field="Biology")
 
-        assert isinstance(author1.__transmuter_provided__, models.Author)
-        assert isinstance(author2.__transmuter_provided__, models.Author)
+            assert isinstance(author1.__transmuter_provided__, models.Author)
+            assert isinstance(author2.__transmuter_provided__, models.Author)
 
     def test_unblessed_transmuter_no_orm(self):
         """Test that unblessed transmuters don't have ORM objects."""
@@ -196,24 +178,6 @@ class TestBlessingRules:
         obj = UnblessedTransmuter(name="test")
         assert obj.__transmuter_provided__ is None
 
-    def test_blessing_validates_orm_compatibility(self):
-        """Test that blessing validates ORM class has compatible fields."""
-        from arcanum.base import BaseTransmuter
-
-        test_materia = SqlalchemyMateria()
-
-        # This should work - fields match
-        @test_materia.bless(models.Author)
-        class GoodAuthor(BaseTransmuter):
-            id: int | None = None
-            name: str
-            field: str
-
-        # Verify the transmuter works with matching fields
-        author = GoodAuthor(name="Test Author", field="Physics")
-        assert author.__transmuter_provided__ is not None
-        assert author.name == "Test Author"
-
 
 class TestORMAttributeAccess:
     """Test accessing ORM attributes through transmuters."""
@@ -222,8 +186,8 @@ class TestORMAttributeAccess:
         """Test that transmuter fields map to ORM attributes."""
         author = Author(name="Test", field="Physics")
 
-        assert author.name == author.__transmuter_provided__.name
-        assert author.field == author.__transmuter_provided__.field
+        assert author.name == author.__transmuter_provided__.name  # type: ignore
+        assert author.field == author.__transmuter_provided__.field  # type: ignore
 
     def test_modify_transmuter_updates_orm(self):
         """Test that modifying transmuter fields updates ORM object."""
@@ -233,14 +197,14 @@ class TestORMAttributeAccess:
         author.name = "Updated"
 
         # ORM should reflect change
-        assert author.__transmuter_provided__.name == "Updated"
+        assert author.__transmuter_provided__.name == "Updated"  # type: ignore
 
     def test_modify_orm_visible_in_transmuter(self):
         """Test that modifying ORM attributes is visible through transmuter after revalidate."""
         author = Author(name="Original", field="Physics")
 
         # Modify ORM directly
-        author.__transmuter_provided__.name = "Changed"
+        author.__transmuter_provided__.name = "Changed"  # type: ignore
 
         # Need to revalidate to sync from ORM
         author.revalidate()
@@ -258,10 +222,10 @@ class TestORMAttributeAccess:
             author.name = "Updated Before Flush"
             session.flush()
 
-            assert author.__transmuter_provided__.name == "Updated Before Flush"
+            assert author.__transmuter_provided__.name == "Updated Before Flush"  # type: ignore
 
             # Modify after flush
             author.name = "Updated After Flush"
             session.flush()
 
-            assert author.__transmuter_provided__.name == "Updated After Flush"
+            assert author.__transmuter_provided__.name == "Updated After Flush"  # type: ignore

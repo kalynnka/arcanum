@@ -1,12 +1,26 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    declared_attr,
+    mapped_column,
+    relationship,
+)
 
 from arcanum.base import TransmuterProxiedMixin
 
 
-class Base(DeclarativeBase, TransmuterProxiedMixin): ...
+class Base(DeclarativeBase, TransmuterProxiedMixin):
+    """Base class for all test ORM models."""
+
+    @declared_attr
+    def test_id(cls) -> Mapped[UUID | None]:
+        """Nullable test_id column for test case data isolation."""
+        return mapped_column(Uuid, nullable=True, default=None)
 
 
 # Secondary table for M-M relationship between Book and Category

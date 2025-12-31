@@ -261,21 +261,23 @@ class TestUpdateDelete:
             session.flush()
             author.revalidate()
 
+            session.expunge_all()
+
             # Update with RETURNING
             stmt = (
-                update(models.Author)
-                .where(models.Author.id == author.id)
+                update(Author)
+                .where(Author["id"] == author.id)
                 .values(name="After Update")
-                .returning(models.Author)
+                .returning(Author)
             )
-            result = session.execute(stmt)
-            updated_orm = result.scalar_one()
+            updated_author = session.execute(stmt).scalar_one()
 
             # Verify
-            assert updated_orm.name == "After Update"
+            assert updated_author.name == "After Update"
 
             # Check via transmuter
             session.expire_all()
+
             author_retrieved = session.get_one(Author, author.id)
             assert author_retrieved.name == "After Update"
 
@@ -288,21 +290,23 @@ class TestUpdateDelete:
             session.flush()
             author.revalidate()
 
+            session.expunge_all()
+
             # Delete with RETURNING
-            stmt = (
-                delete(models.Author)
-                .where(models.Author.id == author.id)
-                .returning(models.Author.name, models.Author.field)
-            )
-            result = session.execute(stmt)
-            deleted_data = result.one()
+            stmt = delete(Author).where(Author["id"] == author.id).returning(Author)
+            deleted_author = session.execute(stmt).scalar_one()
 
             # Verify returned data
-            assert deleted_data.name == "To Delete RETURNING"
-            assert deleted_data.field == "Biology"
+            assert deleted_author.name == "To Delete RETURNING"
+            assert deleted_author.field == "Biology"
 
             # Verify deletion
-            assert session.get(Author, author.id) is None
+            assert (
+                session.execute(
+                    select(Author).where(Author["id"] == author.id)
+                ).scalar_one_or_none()
+                is None
+            )
 
     def test_bulk_update(self, engine: Engine):
         """Test bulk UPDATE operation."""
@@ -314,12 +318,14 @@ class TestUpdateDelete:
 
             # Bulk update
             stmt = (
-                update(models.Author)
-                .where(models.Author.name.like("Bulk Update%"))
+                update(Author)
+                .where(Author["name"].like("Bulk Update%"))
                 .values(field="Quantum Physics")
             )
             result = session.execute(stmt)
             assert result.rowcount == 3
+
+            session.expunge_all()
 
             # Verify
             stmt = select(Author).where(Author["name"].like("Bulk Update%"))
