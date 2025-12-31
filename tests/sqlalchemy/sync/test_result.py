@@ -184,7 +184,7 @@ class TestResultUnique:
 
             session.add(book)
             session.flush()
-            book_id = book.id
+            book.revalidate()
 
             # Clear session
             session.expunge_all()
@@ -194,7 +194,7 @@ class TestResultUnique:
 
             stmt = (
                 select(Book)
-                .where(Book["id"] == book_id)
+                .where(Book["id"] == book.id)
                 .options(selectinload(models.Book.categories))
             )
             result = session.execute(stmt)

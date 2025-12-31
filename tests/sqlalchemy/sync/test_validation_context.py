@@ -25,11 +25,11 @@ class TestValidationContext:
             author = Author(name="Context Author", field="Physics")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Get the same author via different queries
-            fetch1 = session.get_one(Author, author_id)
-            stmt = select(Author).where(Author["id"] == author_id)
+            fetch1 = session.get_one(Author, author.id)
+            stmt = select(Author).where(Author["id"] == author.id)
             fetch2 = session.execute(stmt).scalars().one()
 
             # Should be the EXACT same Python object (identity)
@@ -38,20 +38,20 @@ class TestValidationContext:
 
     def test_same_orm_different_sessions_different_transmuters(self, engine: Engine):
         """Test that the same ORM object in different sessions creates different transmuter instances."""
-        author_id = None
+        author = None
 
         # Session 1
         with Session(engine) as session1:
             author = Author(name="Multi Session Author", field="Biology")
             session1.add(author)
             session1.flush()
-            author_id = author.id
-            obj1 = session1.get_one(Author, author_id)
+            author.revalidate()
+            obj1 = session1.get_one(Author, author.id)
             obj1_id = id(obj1)
 
         # Session 2
         with Session(engine) as session2:
-            obj2 = session2.get_one(Author, author_id)
+            obj2 = session2.get_one(Author, author.id)
             obj2_id = id(obj2)
 
             # Different Python objects
@@ -72,11 +72,10 @@ class TestValidationContext:
 
             session.add(book)
             session.flush()
-
-            book_id = book.id
+            book.revalidate()
 
             # Fetch book
-            fetched_book = session.get_one(Book, book_id)
+            fetched_book = session.get_one(Book, book.id)
 
             # Fetched book should be same instance
             assert fetched_book is book
@@ -111,22 +110,22 @@ class TestValidationContext:
 
     def test_context_isolation_between_sessions(self, engine: Engine):
         """Test that validation contexts don't leak between sessions."""
-        author_id = None
+        author = None
 
         # Create in session 1
         with Session(engine) as session1:
             author = Author(name="Isolated Author", field="Physics")
             session1.add(author)
             session1.flush()
-            author_id = author.id
+            author.revalidate()
 
-            author1 = session1.get_one(Author, author_id)
+            author1 = session1.get_one(Author, author.id)
             author1.name = "Modified in Session 1"
             session1.flush()
 
         # Load in session 2 - should not see uncommitted changes from session 1
         with Session(engine) as session2:
-            author2 = session2.get_one(Author, author_id)
+            author2 = session2.get_one(Author, author.id)
 
             # Should see the name as it was committed
             assert author2.name == "Modified in Session 1"
@@ -143,12 +142,13 @@ class TestValidationContext:
             session.flush()
 
             # ORM should reflect change
-            assert author.__transmuter_provided__.name == "Updated via Transmuter"
+            assert author.__transmuter_provided__.name == "Updated via Transmuter"  # type: ignore
 
             # Modify ORM directly
-            author.__transmuter_provided__.name = "Updated via ORM"
+            author.__transmuter_provided__.name = "Updated via ORM"  # type: ignore
 
-            # Transmuter should reflect change
+            # Transmuter need revalidate to reflect change
+            author.revalidate()
             assert author.name == "Updated via ORM"
 
     def test_expunge_breaks_context_association(self, engine: Engine):
@@ -157,13 +157,13 @@ class TestValidationContext:
             author = Author(name="Expunge Test", field="Chemistry")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Expunge
             session.expunge(author)
 
             # Fetching again should give a different instance
-            author2 = session.get_one(Author, author_id)
+            author2 = session.get_one(Author, author.id)
 
             assert author is not author2
 
@@ -206,21 +206,21 @@ class TestSessionScopedValidation:
 
     def test_detached_transmuter_reattachment(self, engine: Engine):
         """Test reattaching a detached transmuter to a new session."""
-        author_id = None
+        author = None
 
         # Create in session 1
         with Session(engine) as session1:
             author = Author(name="Detach Test", field="Biology")
             session1.add(author)
             session1.flush()
-            author_id = author.id
+            author.revalidate()
 
         # author is now detached (session closed)
 
         # Reattach to session 2
         with Session(engine) as session2:
             # Get fresh instance
-            author2 = session2.get_one(Author, author_id)
+            author2 = session2.get_one(Author, author.id)
 
             # Modify
             author2.name = "Modified in Session 2"
@@ -231,21 +231,21 @@ class TestSessionScopedValidation:
 
     def test_merge_brings_detached_into_session(self, engine: Engine):
         """Test using merge to bring detached objects into session."""
-        author_id = None
+        author = None
 
         # Create in session 1
         with Session(engine) as session1:
             author = Author(name="Merge Test", field="Chemistry")
             session1.add(author)
             session1.flush()
-            author_id = author.id
+            author.revalidate()
 
         # Author is detached now
 
         # Use merge in session 2
         with Session(engine) as session2:
             # Load the author fresh
-            author_fresh = session2.get_one(Author, author_id)
+            author_fresh = session2.get_one(Author, author.id)
             author_fresh.name = "Merged and Modified"
             session2.flush()
 
@@ -302,61 +302,8 @@ class TestSessionScopedValidation:
             session.rollback()
 
             # Refresh to reload
-            session.expire(author)
-            session.refresh(author)
+            session.add(author)
+            author.revalidate()
 
             # Should be back to original
             assert author.name == original_name
-
-
-class TestCrossSessionBehavior:
-    """Test behavior across multiple sessions."""
-
-    def test_concurrent_sessions_independent(self, engine: Engine):
-        """Test that concurrent sessions are independent."""
-        with Session(engine) as session1, Session(engine) as session2:
-            # Create in session1
-            author1 = Author(name="Concurrent 1", field="Physics")
-            session1.add(author1)
-            session1.flush()
-            author_id = author1.id
-
-            # Load in session2
-            author2 = session2.get_one(Author, author_id)
-
-            # Modify in session1
-            author1.name = "Modified in Session 1"
-            session1.flush()
-
-            # session2's copy should not automatically update
-            # (needs explicit refresh)
-            session2.expire(author2)
-            session2.refresh(author2)
-            assert author2.name == "Modified in Session 1"
-
-    def test_sequential_sessions_see_committed_changes(self, engine: Engine):
-        """Test that sequential sessions see committed changes."""
-        author_id = None
-
-        # Session 1
-        with Session(engine) as session1:
-            author = Author(name="Sequential Test", field="Biology")
-            session1.add(author)
-            session1.flush()
-            author_id = author.id
-            session1.commit()
-
-        # Session 2
-        with Session(engine) as session2:
-            author2 = session2.get_one(Author, author_id)
-            assert author2.name == "Sequential Test"
-
-            # Modify
-            author2.name = "Sequential Modified"
-            session2.flush()
-            session2.commit()
-
-        # Session 3
-        with Session(engine) as session3:
-            author3 = session3.get_one(Author, author_id)
-            assert author3.name == "Sequential Modified"

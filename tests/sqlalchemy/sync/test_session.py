@@ -133,11 +133,11 @@ class TestObjectIdentity:
             author = Author(name="Identity Test", field="Biology")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Fetch twice
-            fetch1 = session.get_one(Author, author_id)
-            fetch2 = session.get_one(Author, author_id)
+            fetch1 = session.get_one(Author, author.id)
+            fetch2 = session.get_one(Author, author.id)
 
             # Should be the same object
             assert fetch1 is fetch2
@@ -148,13 +148,13 @@ class TestObjectIdentity:
             author = Author(name="Query Identity Test", field="Chemistry")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Fetch via get_one
-            via_get = session.get_one(Author, author_id)
+            via_get = session.get_one(Author, author.id)
 
             # Fetch via query
-            stmt = select(Author).where(Author["id"] == author_id)
+            stmt = select(Author).where(Author["id"] == author.id)
             via_query = session.execute(stmt).scalars().one()
 
             # Should be the same object
@@ -162,16 +162,16 @@ class TestObjectIdentity:
 
     def test_identity_not_shared_across_sessions(self, engine: Engine):
         """Test that different sessions have different object instances."""
-        author_id = None
         with Session(engine) as session1:
             author = Author(name="Cross Session Test", field="Physics")
             session1.add(author)
             session1.flush()
-            author_id = author.id
-            obj1 = session1.get_one(Author, author_id)
+            author.revalidate()
+            session1.commit()
+            obj1 = session1.get_one(Author, author.id)
 
             with Session(engine) as session2:
-                obj2 = session2.get_one(Author, author_id)
+                obj2 = session2.get_one(Author, author.id)
 
                 # Different objects
                 assert obj1 is not obj2
@@ -184,16 +184,16 @@ class TestObjectIdentity:
             author = Author(name="Original", field="Biology")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Get reference
-            ref1 = session.get_one(Author, author_id)
+            ref1 = session.get_one(Author, author.id)
 
             # Modify through first reference
             ref1.name = "Modified"
 
             # Get another reference
-            ref2 = session.get_one(Author, author_id)
+            ref2 = session.get_one(Author, author.id)
 
             # Should see modification
             assert ref2.name == "Modified"
@@ -209,6 +209,7 @@ class TestAddOperations:
             author = Author(name="Single Add", field="Literature")
             session.add(author)
             session.flush()
+            author.revalidate()
 
             assert author.id is not None
 
@@ -218,6 +219,8 @@ class TestAddOperations:
             authors = [Author(name=f"Batch {i}", field="Physics") for i in range(5)]
             session.add_all(authors)
             session.flush()
+            for a in authors:
+                a.revalidate()
 
             assert all(a.id is not None for a in authors)
 
@@ -234,6 +237,9 @@ class TestAddOperations:
             # Adding book should cascade
             session.add(book)
             session.flush()
+            book.revalidate()
+            author.revalidate()
+            publisher.revalidate()
 
             assert book.id is not None
             assert author.id is not None
@@ -249,14 +255,14 @@ class TestDeleteOperations:
             author = Author(name="To Delete", field="Chemistry")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Delete
             session.delete(author)
             session.flush()
 
             # Verify
-            assert session.get(Author, author_id) is None
+            assert session.get(Author, author.id) is None
 
     def test_delete_cascades_to_children(self, engine: Engine):
         """Test that deleting parent cascades to children."""
@@ -270,17 +276,16 @@ class TestDeleteOperations:
 
             session.add(book)
             session.flush()
-
-            book_id = book.id
-            author_id = author.id
+            book.revalidate()
+            author.revalidate()
 
             # Delete author (should cascade to book due to ON DELETE CASCADE)
             session.delete(author)
             session.flush()
 
             # Book should be deleted
-            assert session.get(Book, book_id) is None
-            assert session.get(Author, author_id) is None
+            assert session.get(Book, book.id) is None
+            assert session.get(Author, author.id) is None
 
 
 class TestFlushCommitRollback:
@@ -297,6 +302,7 @@ class TestFlushCommitRollback:
 
             # After flush
             session.flush()
+            author.revalidate()
             assert author.id is not None
 
             # But not yet committed
@@ -304,11 +310,11 @@ class TestFlushCommitRollback:
 
     def test_commit_persists_changes(self, engine: Engine):
         """Test that commit persists changes to database."""
-        author_id = None
         with Session(engine) as session:
             author = Author(name="Commit Test", field="Chemistry")
             session.add(author)
             session.flush()
+            author.revalidate()
             author_id = author.id
             session.commit()
 
@@ -323,18 +329,20 @@ class TestFlushCommitRollback:
             author = Author(name="Rollback Test", field="Physics")
             session.add(author)
             session.flush()
+            author.revalidate()
             author_id = author.id
+            session.commit()  # Commit the original insert
 
             # Modify
             author.name = "Modified"
             session.flush()
 
-            # Rollback
+            # Rollback only reverts the modification
             session.rollback()
 
-            # Changes should be reverted
-            session.expire(author)
+            # Refresh the author object to reload from database
             session.refresh(author)
+            author.revalidate()
             assert author.name == "Rollback Test"
 
     def test_multiple_flush_before_commit(self, engine: Engine):
@@ -362,7 +370,7 @@ class TestExpireRefresh:
             author = Author(name="Expire Test", field="Biology")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Modify in database directly (simulate external change)
             from sqlalchemy import update
@@ -371,18 +379,20 @@ class TestExpireRefresh:
 
             stmt = (
                 update(models.Author)
-                .where(models.Author.id == author_id)
+                .where(models.Author.id == author.id)
                 .values(name="Externally Modified")
             )
             session.execute(stmt)
             session.commit()
 
             # Object still has old value in memory
-            # (Unless we expire it)
+            # (Unless we expire and refresh it)
 
-            # In new session, expire and access
+            # Expire and refresh to reload from database
             session.expire(author)
-            # Next access should reload
+            session.refresh(author)
+            author.revalidate()
+            # Next access should show new value
             assert author.name == "Externally Modified"
 
     def test_refresh_reloads_immediately(self, engine: Engine):
@@ -391,7 +401,7 @@ class TestExpireRefresh:
             author = Author(name="Refresh Test", field="Chemistry")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Modify in database
             from sqlalchemy import update
@@ -400,7 +410,7 @@ class TestExpireRefresh:
 
             stmt = (
                 update(models.Author)
-                .where(models.Author.id == author_id)
+                .where(models.Author.id == author.id)
                 .values(name="DB Modified")
             )
             session.execute(stmt)
@@ -435,14 +445,14 @@ class TestExpunge:
             author = Author(name="Expunge Test", field="Literature")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Expunge
             session.expunge(author)
 
             # Object no longer in session
             # Getting it again returns a different instance
-            author2 = session.get_one(Author, author_id)
+            author2 = session.get_one(Author, author.id)
             assert author is not author2
 
     def test_expunge_all(self, engine: Engine):
@@ -452,16 +462,15 @@ class TestExpunge:
             author2 = Author(name="Expunge All 2", field="Biology")
             session.add_all([author1, author2])
             session.flush()
-
-            id1 = author1.id
-            id2 = author2.id
+            author1.revalidate()
+            author2.revalidate()
 
             # Expunge all
             session.expunge_all()
 
             # Fetching again returns new instances
-            new1 = session.get_one(Author, id1)
-            new2 = session.get_one(Author, id2)
+            new1 = session.get_one(Author, author1.id)
+            new2 = session.get_one(Author, author2.id)
 
             assert new1 is not author1
             assert new2 is not author2

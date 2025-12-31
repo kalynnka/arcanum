@@ -39,6 +39,8 @@ class TestCRUDOperations:
             authors = [Author(name=f"Author {i}", field="Literature") for i in range(5)]
             session.add_all(authors)
             session.flush()
+            for author in authors:
+                author.revalidate()
 
             # All should have IDs
             assert all(author.id is not None for author in authors)
@@ -50,12 +52,12 @@ class TestCRUDOperations:
             author = Author(name="Test Select", field="Physics")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Retrieve by PK
-            retrieved = session.get_one(Author, author_id)
+            retrieved = session.get_one(Author, author.id)
             assert retrieved.name == "Test Select"
-            assert retrieved.id == author_id
+            assert retrieved.id == author.id
 
     def test_update_record(self, engine: Engine):
         """Test updating a record."""
@@ -80,14 +82,14 @@ class TestCRUDOperations:
             author = Author(name="To Delete", field="Chemistry")
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Delete
             session.delete(author)
             session.flush()
 
             # Verify deletion
-            result = session.get(Author, author_id)
+            result = session.get(Author, author.id)
             assert result is None
 
     def test_bulk_insert_with_core(self, engine: Engine):
@@ -258,12 +260,11 @@ class TestUpdateDelete:
             session.add(author)
             session.flush()
             author.revalidate()
-            author_id = author.id
 
             # Update with RETURNING
             stmt = (
                 update(models.Author)
-                .where(models.Author.id == author_id)
+                .where(models.Author.id == author.id)
                 .values(name="After Update")
                 .returning(models.Author)
             )
@@ -275,7 +276,7 @@ class TestUpdateDelete:
 
             # Check via transmuter
             session.expire_all()
-            author_retrieved = session.get_one(Author, author_id)
+            author_retrieved = session.get_one(Author, author.id)
             assert author_retrieved.name == "After Update"
 
     def test_delete_with_returning(self, engine: Engine):
@@ -286,12 +287,11 @@ class TestUpdateDelete:
             session.add(author)
             session.flush()
             author.revalidate()
-            author_id = author.id
 
             # Delete with RETURNING
             stmt = (
                 delete(models.Author)
-                .where(models.Author.id == author_id)
+                .where(models.Author.id == author.id)
                 .returning(models.Author.name, models.Author.field)
             )
             result = session.execute(stmt)
@@ -302,7 +302,7 @@ class TestUpdateDelete:
             assert deleted_data.field == "Biology"
 
             # Verify deletion
-            assert session.get(Author, author_id) is None
+            assert session.get(Author, author.id) is None
 
     def test_bulk_update(self, engine: Engine):
         """Test bulk UPDATE operation."""
@@ -425,7 +425,7 @@ class TestLoadingStrategies:
 
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Clear session
             session.expunge_all()
@@ -433,7 +433,7 @@ class TestLoadingStrategies:
             # Query with selectinload
             stmt = (
                 select(Author)
-                .where(Author["id"] == author_id)
+                .where(Author["id"] == author.id)
                 .options(selectinload(models.Author.books))
             )
             loaded_author = session.execute(stmt).scalars().one()
@@ -456,7 +456,7 @@ class TestLoadingStrategies:
 
             session.add(book)
             session.flush()
-            book_id = book.id
+            book.revalidate()
 
             # Clear session
             session.expunge_all()
@@ -464,7 +464,7 @@ class TestLoadingStrategies:
             # Query with joinedload
             stmt = (
                 select(Book)
-                .where(Book["id"] == book_id)
+                .where(Book["id"] == book.id)
                 .options(joinedload(models.Book.author))
             )
             loaded_book = session.execute(stmt).scalars().one()
@@ -488,7 +488,7 @@ class TestLoadingStrategies:
 
             session.add(book)
             session.flush()
-            book_id = book.id
+            book.revalidate()
 
             # Clear session
             session.expunge_all()
@@ -496,7 +496,7 @@ class TestLoadingStrategies:
             # Query with selectinload
             stmt = (
                 select(Book)
-                .where(Book["id"] == book_id)
+                .where(Book["id"] == book.id)
                 .options(selectinload(models.Book.categories))
             )
             loaded_book = session.execute(stmt).scalars().one()

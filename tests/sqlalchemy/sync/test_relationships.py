@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import Engine, select
-from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import joinedload, raiseload, selectinload
 
 from arcanum.association import Relation, RelationCollection
@@ -401,13 +400,12 @@ class TestLazyLoading:
             session.add(author)
             session.flush()
             author.revalidate()
-            author_id = author.id
 
             # Clear session to force reload
             session.expunge_all()
 
             # Load author without books
-            loaded_author = session.get_one(Author, author_id)
+            loaded_author = session.get_one(Author, author.id)
 
             with patch.object(session, "execute", wraps=session.execute) as execute_spy:
                 # Accessing books should trigger lazy load
@@ -431,13 +429,12 @@ class TestLazyLoading:
             session.add(book)
             session.flush()
             book.revalidate()
-            book_id = book.id
 
             # Clear session
             session.expunge_all()
 
             # Load book
-            loaded_book = session.get_one(Book, book_id)
+            loaded_book = session.get_one(Book, book.id)
 
             with patch.object(session, "execute", wraps=session.execute) as execute_spy:
                 # Accessing author should lazy load
@@ -494,7 +491,6 @@ class TestEagerLoading:
             session.add(author)
             session.flush()
             author.revalidate()
-            author_id = author.id
 
             # Clear session
             session.expunge_all()
@@ -502,7 +498,7 @@ class TestEagerLoading:
             # Load author with joined books
             stmt = (
                 select(Author)
-                .where(Author["id"] == author_id)
+                .where(Author["id"] == author.id)
                 .options(joinedload(models.Author.books))
             )
             loaded_author = session.execute(stmt).scalars().unique().one()
@@ -630,7 +626,7 @@ class TestRaiseOnSQLBehavior:
 
             session.add(book)
             session.flush()
-            book_id = book.id
+            book.revalidate()
 
             # Clear session
             session.expunge_all()
@@ -638,13 +634,15 @@ class TestRaiseOnSQLBehavior:
             # Load book with raiseload on author
             stmt = (
                 select(Book)
-                .where(Book["id"] == book_id)
+                .where(Book["id"] == book.id)
                 .options(raiseload(models.Book.author))
             )
             loaded_book = session.execute(stmt).scalars().one()
 
-            # Accessing author should raise
-            with pytest.raises(InvalidRequestError, match="lazy"):
+            # Accessing author should raise RuntimeError (Arcanum wraps InvalidRequestError)
+            with pytest.raises(
+                RuntimeError, match="loading strategy is set to 'raise'"
+            ):
                 _ = loaded_book.author.value
 
     def test_raiseload_collection(self, engine: Engine):
@@ -661,7 +659,7 @@ class TestRaiseOnSQLBehavior:
 
             session.add(author)
             session.flush()
-            author_id = author.id
+            author.revalidate()
 
             # Clear session
             session.expunge_all()
@@ -669,14 +667,17 @@ class TestRaiseOnSQLBehavior:
             # Load author with raiseload on books
             stmt = (
                 select(Author)
-                .where(Author["id"] == author_id)
+                .where(Author["id"] == author.id)
                 .options(raiseload(models.Author.books))
             )
             loaded_author = session.execute(stmt).scalars().one()
 
-            # Accessing books should raise
-            with pytest.raises(InvalidRequestError, match="lazy"):
-                _ = loaded_author.books
+            # Accessing books collection should raise RuntimeError (Arcanum wraps InvalidRequestError)
+            # We need to iterate or access elements to trigger the lazy load
+            with pytest.raises(
+                RuntimeError, match="loading strategy is set to 'raise'"
+            ):
+                _ = len(loaded_author.books)
 
 
 class TestReviewsOneToMany:
@@ -799,7 +800,7 @@ class TestComplexRelationshipQueries:
 
             session.add(book)
             session.flush()
-            book_id = book.id
+            book.revalidate()
 
             # Clear session
             session.expunge_all()
@@ -807,7 +808,7 @@ class TestComplexRelationshipQueries:
             # Load book with nested relationships
             stmt = (
                 select(Book)
-                .where(Book["id"] == book_id)
+                .where(Book["id"] == book.id)
                 .options(
                     selectinload(models.Book.author),
                     selectinload(models.Book.detail),
@@ -821,3 +822,610 @@ class TestComplexRelationshipQueries:
             assert loaded_book.author.value.name == "Nested Load Author"
             assert loaded_book.detail.value.pages == 250
             assert loaded_book.publisher.value.name == "Nested Load Pub"
+
+
+class TestAutoflushBeforeRelationshipLoading:
+    """Test that auto-fired statements (autoflush) are executed before visiting relationships.
+
+    These tests ensure that when using selectinload or other eager loading strategies,
+    pending INSERT/UPDATE operations are flushed before the relationship loading queries
+    are executed, preventing stale data issues.
+    """
+
+    def test_autoflush_before_selectinload_one_to_many(self, engine: Engine):
+        """Test autoflush runs before selectinload on 1-M relationship.
+
+        Ensures that when adding new books to an author and then querying
+        with selectinload, the new books are visible in the results.
+        """
+        with Session(engine) as session:
+            author = Author(name="Autoflush 1-M Author", field="Physics")
+            publisher = Publisher(name="Autoflush 1-M Pub", country="USA")
+
+            session.add(author)
+            session.add(publisher)
+            session.flush()
+            author.revalidate()
+            publisher.revalidate()
+
+            # Add books directly to ORM relationship
+            for i in range(3):
+                book = Book(title=f"Autoflush 1-M Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+                session.add(book)
+
+            # Note: Books are in pending state, not yet flushed
+            # Query with selectinload - autoflush should fire before relationship loading
+            with patch.object(session, "flush", wraps=session.flush) as flush_spy:
+                stmt = (
+                    select(Author)
+                    .where(Author["id"] == author.id)
+                    .options(selectinload(models.Author.books))
+                )
+                loaded_author = session.execute(stmt).scalars().one()
+
+                # Flush should have been called by autoflush before the query
+                assert flush_spy.call_count >= 1
+
+            # All pending books should be loaded
+            assert len(loaded_author.books) == 3
+
+    def test_autoflush_before_selectinload_many_to_one(self, engine: Engine):
+        """Test autoflush runs before selectinload on M-1 relationship.
+
+        Ensures that pending changes to the related object are visible
+        when loading through selectinload.
+        """
+        with Session(engine) as session:
+            author = Author(name="Autoflush M-1 Author", field="Physics")
+            publisher = Publisher(name="Autoflush M-1 Pub", country="USA")
+            book = Book(title="Autoflush M-1 Book", year=2024)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            session.add(book)
+            session.flush()
+            book.revalidate()
+
+            # Modify the author (pending change)
+            author.name = "Modified Autoflush M-1 Author"
+
+            # Query with selectinload - autoflush should fire before loading
+            with patch.object(session, "flush", wraps=session.flush) as flush_spy:
+                stmt = (
+                    select(Book)
+                    .where(Book["id"] == book.id)
+                    .options(selectinload(models.Book.author))
+                )
+                loaded_book = session.execute(stmt).scalars().one()
+
+                # Flush should have been called
+                assert flush_spy.call_count >= 1
+
+            # The modified author name should be visible
+            assert loaded_book.author.value.name == "Modified Autoflush M-1 Author"
+
+    def test_autoflush_before_selectinload_many_to_many(self, engine: Engine):
+        """Test autoflush runs before selectinload on M-M relationship.
+
+        Ensures that newly added categories are visible when loading
+        through selectinload.
+        """
+        with Session(engine) as session:
+            author = Author(name="Autoflush M-M Author", field="History")
+            publisher = Publisher(name="Autoflush M-M Pub", country="UK")
+            book = Book(title="Autoflush M-M Book", year=2024)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            session.add(book)
+            session.flush()
+            book.revalidate()
+
+            # Add categories after flush (pending in session)
+            cat1 = Category(
+                name="Autoflush M-M Category 1", description="Test category 1"
+            )
+            cat2 = Category(
+                name="Autoflush M-M Category 2", description="Test category 2"
+            )
+            book.categories.extend([cat1, cat2])
+            session.add(cat1)
+            session.add(cat2)
+
+            # Query with selectinload - autoflush should fire first
+            with patch.object(session, "flush", wraps=session.flush) as flush_spy:
+                stmt = (
+                    select(Book)
+                    .where(Book["id"] == book.id)
+                    .options(selectinload(models.Book.categories))
+                )
+                loaded_book = session.execute(stmt).scalars().one()
+
+                # Flush should have been called
+                assert flush_spy.call_count >= 1
+
+            # Both pending categories should be loaded
+            assert len(loaded_book.categories) == 2
+
+    def test_autoflush_before_selectinload_one_to_one(self, engine: Engine):
+        """Test autoflush runs before selectinload on 1-1 relationship.
+
+        Ensures that a pending BookDetail is visible when loading
+        through selectinload.
+        """
+        with Session(engine) as session:
+            author = Author(name="Autoflush 1-1 Author", field="Chemistry")
+            publisher = Publisher(name="Autoflush 1-1 Pub", country="USA")
+            book = Book(title="Autoflush 1-1 Book", year=2024)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            session.add(book)
+            session.flush()
+            book.revalidate()
+
+            # Add detail after initial flush (pending change)
+            detail = BookDetail(
+                isbn="978-AUTOFLUSH-1",
+                pages=500,
+                abstract="Autoflush test abstract",
+            )
+            book.detail.value = detail
+
+            # Query with selectinload - autoflush should fire first
+            with patch.object(session, "flush", wraps=session.flush) as flush_spy:
+                stmt = (
+                    select(Book)
+                    .where(Book["id"] == book.id)
+                    .options(selectinload(models.Book.detail))
+                )
+                loaded_book = session.execute(stmt).scalars().one()
+
+                # Flush should have been called
+                assert flush_spy.call_count >= 1
+
+            # The pending detail should be loaded
+            assert loaded_book.detail.value is not None
+            assert loaded_book.detail.value.isbn == "978-AUTOFLUSH-1"
+
+    def test_autoflush_before_joinedload(self, engine: Engine):
+        """Test autoflush runs before joinedload.
+
+        Ensures joinedload also benefits from autoflush behavior.
+        """
+        with Session(engine) as session:
+            author = Author(name="Autoflush Joined Author", field="Literature")
+            publisher = Publisher(name="Autoflush Joined Pub", country="France")
+
+            session.add(author)
+            session.add(publisher)
+            session.flush()
+            author.revalidate()
+            publisher.revalidate()
+
+            # Add books (pending)
+            for i in range(2):
+                book = Book(title=f"Autoflush Joined Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+                session.add(book)
+
+            # Query with joinedload - autoflush should fire first
+            with patch.object(session, "flush", wraps=session.flush) as flush_spy:
+                stmt = (
+                    select(Author)
+                    .where(Author["id"] == author.id)
+                    .options(joinedload(models.Author.books))
+                )
+                loaded_author = session.execute(stmt).scalars().unique().one()
+
+                # Flush should have been called
+                assert flush_spy.call_count >= 1
+
+            # All pending books should be loaded
+            assert len(loaded_author.books) == 2
+
+    def test_autoflush_disabled_does_not_flush_pending(self, engine: Engine):
+        """Test that disabling autoflush prevents pending items from being flushed.
+
+        This is a negative test to confirm that our autoflush tests are valid.
+        When autoflush is disabled, pending changes should not be written to DB
+        before the query executes.
+        """
+        with Session(engine, autoflush=False) as session:
+            author = Author(name="No Autoflush Author", field="Chemistry")
+            publisher = Publisher(name="No Autoflush Pub", country="Germany")
+
+            session.add(author)
+            session.add(publisher)
+            session.flush()
+            author.revalidate()
+            publisher.revalidate()
+
+            # Add a book (pending, won't be flushed automatically)
+            book = Book(title="No Autoflush Book", year=2024)
+            book.author.value = author
+            book.publisher.value = publisher
+            session.add(book)
+
+            # Verify the book is pending (not in DB yet)
+            with patch.object(session, "flush", wraps=session.flush) as flush_spy:
+                # Query - autoflush disabled, flush should NOT be called
+                stmt = (
+                    select(Author)
+                    .where(Author["id"] == author.id)
+                    .options(selectinload(models.Author.books))
+                )
+                session.execute(stmt).scalars().one()
+
+                # Flush should NOT have been called (autoflush disabled)
+                assert flush_spy.call_count == 0
+
+            # After manual flush, the book should be persisted
+            session.flush()
+            book.revalidate()
+            assert book.id is not None
+
+
+class TestSelectinloadWithORMRelationships:
+    """Test selectinload behavior with various ORM relationship configurations.
+
+    These tests verify that selectinload works correctly with different
+    relationship types and configurations when combined with Arcanum's
+    Transmuter validation system.
+    """
+
+    def test_selectinload_on_orm_relationship_one_to_many(self, engine: Engine):
+        """Test selectinload on ORM 1-M relationship (Author.books)."""
+        with Session(engine) as session:
+            author = Author(name="ORM Selectin 1-M Author", field="Physics")
+            publisher = Publisher(name="ORM Selectin 1-M Pub", country="USA")
+
+            for i in range(4):
+                book = Book(title=f"ORM Selectin 1-M Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+
+            session.add(author)
+            session.add(publisher)
+            session.flush()
+            author.revalidate()
+
+            session.expunge_all()
+
+            # Load with selectinload on the ORM relationship
+            with patch.object(session, "execute", wraps=session.execute) as spy:
+                stmt = (
+                    select(Author)
+                    .where(Author["id"] == author.id)
+                    .options(selectinload(models.Author.books))
+                )
+                loaded_author = session.execute(stmt).scalars().one()
+
+                # Should have 2 executes: main query + selectin query
+                assert spy.call_count == 2
+
+            # Verify books are loaded correctly through Transmuter
+            assert len(loaded_author.books) == 4
+            for book in loaded_author.books:
+                assert isinstance(book, Book)
+                assert "ORM Selectin 1-M Book" in book.title
+
+    def test_selectinload_on_orm_relationship_many_to_one(self, engine: Engine):
+        """Test selectinload on ORM M-1 relationship (Book.author)."""
+        with Session(engine) as session:
+            author = Author(name="ORM Selectin M-1 Author", field="Physics")
+            publisher = Publisher(name="ORM Selectin M-1 Pub", country="UK")
+
+            book_ids = []
+            for i in range(3):
+                book = Book(title=f"ORM Selectin M-1 Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+                session.add(book)
+
+            session.flush()
+
+            for book in author.books:
+                book.revalidate()
+                book_ids.append(book.id)
+
+            session.expunge_all()
+
+            # Load with selectinload on ORM M-1 relationship
+            with patch.object(session, "execute", wraps=session.execute) as spy:
+                stmt = (
+                    select(Book)
+                    .where(Book["id"].in_(book_ids))
+                    .options(selectinload(models.Book.author))
+                )
+                books = session.execute(stmt).scalars().all()
+
+                # Main query + selectin query for authors
+                assert spy.call_count == 2
+
+            # All books should have the same author loaded
+            assert len(books) == 3
+            for book in books:
+                assert book.author.value is not None
+                assert book.author.value.name == "ORM Selectin M-1 Author"
+
+    def test_selectinload_on_orm_relationship_many_to_many(self, engine: Engine):
+        """Test selectinload on ORM M-M relationship (Book.categories)."""
+        with Session(engine) as session:
+            author = Author(name="ORM Selectin M-M Author", field="Literature")
+            publisher = Publisher(name="ORM Selectin M-M Pub", country="USA")
+
+            # Create shared categories
+            categories = [
+                Category(name=f"ORM Selectin M-M Cat {i}", description=f"Category {i}")
+                for i in range(3)
+            ]
+
+            book_ids = []
+            for i in range(2):
+                book = Book(title=f"ORM Selectin M-M Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+                book.categories.extend(categories)
+                session.add(book)
+
+            session.flush()
+
+            for book in author.books:
+                book.revalidate()
+                book_ids.append(book.id)
+
+            session.expunge_all()
+
+            # Load with selectinload on ORM M-M relationship
+            with patch.object(session, "execute", wraps=session.execute) as spy:
+                stmt = (
+                    select(Book)
+                    .where(Book["id"].in_(book_ids))
+                    .options(selectinload(models.Book.categories))
+                )
+                books = session.execute(stmt).scalars().all()
+
+                # Main query + selectin query for categories
+                assert spy.call_count == 2
+
+            # Each book should have all 3 categories
+            assert len(books) == 2
+            for book in books:
+                assert len(book.categories) == 3
+
+    def test_selectinload_on_orm_relationship_one_to_one(self, engine: Engine):
+        """Test selectinload on ORM 1-1 relationship (Book.detail)."""
+        with Session(engine) as session:
+            author = Author(name="ORM Selectin 1-1 Author", field="Chemistry")
+            publisher = Publisher(name="ORM Selectin 1-1 Pub", country="France")
+
+            book_ids = []
+            for i in range(3):
+                book = Book(title=f"ORM Selectin 1-1 Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+                detail = BookDetail(
+                    isbn=f"978-ORM-SELECTIN-{i}",
+                    pages=100 + i * 50,
+                    abstract=f"ORM Selectin abstract {i}",
+                )
+                book.detail.value = detail
+                session.add(book)
+
+            session.flush()
+
+            for book in author.books:
+                book.revalidate()
+                book_ids.append(book.id)
+
+            session.expunge_all()
+
+            # Load with selectinload on ORM 1-1 relationship
+            with patch.object(session, "execute", wraps=session.execute) as spy:
+                stmt = (
+                    select(Book)
+                    .where(Book["id"].in_(book_ids))
+                    .options(selectinload(models.Book.detail))
+                )
+                books = session.execute(stmt).scalars().all()
+
+                # Main query + selectin query for details
+                assert spy.call_count == 2
+
+            # Each book should have its detail loaded
+            assert len(books) == 3
+            for book in books:
+                assert book.detail.value is not None
+                assert "978-ORM-SELECTIN" in book.detail.value.isbn
+
+    def test_selectinload_chained_relationships(self, engine: Engine):
+        """Test chained selectinload for nested relationships."""
+        with Session(engine) as session:
+            author = Author(name="ORM Chained Selectin Author", field="Literature")
+            publisher = Publisher(name="ORM Chained Selectin Pub", country="Italy")
+
+            book = Book(title="ORM Chained Selectin Book", year=2024)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            detail = BookDetail(
+                isbn="978-CHAINED-001",
+                pages=300,
+                abstract="Chained selectin test",
+            )
+            book.detail.value = detail
+
+            for i in range(2):
+                review = Review(
+                    reviewer_name=f"Reviewer {i}",
+                    rating=4 + (i % 2),
+                    comment=f"Great book {i}!",
+                )
+                book.reviews.append(review)
+
+            session.add(book)
+            session.flush()
+            author.revalidate()
+
+            session.expunge_all()
+
+            # Load author with chained selectinload
+            with patch.object(session, "execute", wraps=session.execute) as spy:
+                stmt = (
+                    select(Author)
+                    .where(Author["id"] == author.id)
+                    .options(
+                        selectinload(models.Author.books).selectinload(
+                            models.Book.reviews
+                        )
+                    )
+                )
+                loaded_author = session.execute(stmt).scalars().one()
+
+                # Main query + books selectin + reviews selectin
+                assert spy.call_count == 3
+
+            # Verify chained loading
+            assert len(loaded_author.books) == 1
+            loaded_book = loaded_author.books[0]
+            assert len(loaded_book.reviews) == 2
+
+    def test_selectinload_multiple_relationships(self, engine: Engine):
+        """Test selectinload on multiple relationships simultaneously."""
+        with Session(engine) as session:
+            author = Author(name="ORM Multi Selectin Author", field="Astronomy")
+            publisher = Publisher(name="ORM Multi Selectin Pub", country="Greece")
+
+            book = Book(title="ORM Multi Selectin Book", year=2024)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            detail = BookDetail(
+                isbn="978-MULTI-001",
+                pages=250,
+                abstract="Multi selectin test",
+            )
+            book.detail.value = detail
+
+            categories = [
+                Category(name=f"ORM Multi Cat {i}", description=f"Category {i}")
+                for i in range(2)
+            ]
+            book.categories.extend(categories)
+
+            session.add(book)
+            session.flush()
+            book.revalidate()
+
+            session.expunge_all()
+
+            # Load book with multiple selectinloads
+            with patch.object(session, "execute", wraps=session.execute) as spy:
+                stmt = (
+                    select(Book)
+                    .where(Book["id"] == book.id)
+                    .options(
+                        selectinload(models.Book.author),
+                        selectinload(models.Book.publisher),
+                        selectinload(models.Book.detail),
+                        selectinload(models.Book.categories),
+                    )
+                )
+                loaded_book = session.execute(stmt).scalars().one()
+
+                # Main query + 4 selectin queries
+                assert spy.call_count == 5
+
+            # Verify all relationships are loaded
+            assert loaded_book.author.value.name == "ORM Multi Selectin Author"
+            assert loaded_book.publisher.value.name == "ORM Multi Selectin Pub"
+            assert loaded_book.detail.value.isbn == "978-MULTI-001"
+            assert len(loaded_book.categories) == 2
+
+    def test_selectinload_with_backref_circular_validation(self, engine: Engine):
+        """Test selectinload handles circular validation through backrefs.
+
+        When loading Book.categories with selectinload, SQLAlchemy also
+        loads Category.books (backref), creating a circular reference.
+        The validation context should handle this without infinite recursion.
+        """
+        with Session(engine) as session:
+            author = Author(name="ORM Circular Author", field="Physics")
+            publisher = Publisher(name="ORM Circular Pub", country="USA")
+
+            category = Category(
+                name="ORM Circular Category", description="Circular test"
+            )
+
+            for i in range(3):
+                book = Book(title=f"ORM Circular Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+                book.categories.append(category)
+                session.add(book)
+
+            session.flush()
+
+            book_ids = []
+            for book in author.books:
+                book.revalidate()
+                book_ids.append(book.id)
+
+            session.expunge_all()
+
+            # Load one book with selectinload on categories
+            stmt = (
+                select(Book)
+                .where(Book["id"] == book_ids[0])
+                .options(selectinload(models.Book.categories))
+            )
+            loaded_book = session.execute(stmt).scalars().one()
+
+            # Category should be loaded
+            assert len(loaded_book.categories) == 1
+            loaded_category = loaded_book.categories[0]
+
+            # The backref (Category.books) should also work
+            # This tests circular validation handling
+            assert len(loaded_category.books) == 3
+
+    def test_selectinload_preserves_transmuter_validation(self, engine: Engine):
+        """Test that selectinload results go through Transmuter validation.
+
+        Ensures that ORM objects loaded via selectinload are properly
+        converted to Transmuter instances.
+        """
+        with Session(engine) as session:
+            author = Author(name="ORM Validation Author", field="Biology")
+            publisher = Publisher(name="ORM Validation Pub", country="USA")
+
+            for i in range(2):
+                book = Book(title=f"ORM Validation Book {i}", year=2024)
+                book.author.value = author
+                book.publisher.value = publisher
+
+            session.add(author)
+            session.add(publisher)
+            session.flush()
+            author.revalidate()
+
+            session.expunge_all()
+
+            # Load with selectinload
+            stmt = (
+                select(Author)
+                .where(Author["id"] == author.id)
+                .options(selectinload(models.Author.books))
+            )
+            loaded_author = session.execute(stmt).scalars().one()
+
+            # Verify loaded objects are Transmuter instances
+            assert isinstance(loaded_author, Author)
+            for book in loaded_author.books:
+                assert isinstance(book, Book)
+                # Verify the book has a provider set
+                assert book.__transmuter_provided__ is not None
