@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, Literal, Optional
 from uuid import UUID
 
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from arcanum.association import (
     Relation,
@@ -18,8 +18,8 @@ from tests import models
 sqlalchemy_materia = SqlalchemyMateria()
 
 
-class TestIdMixin:
-    test_id: Optional[UUID] = Field(default=None, frozen=True)
+class TestIdMixin(BaseModel):
+    test_id: Optional[UUID] = Field(default=None, frozen=True, exclude=True)
 
 
 # Publisher schema (1-M with Book)
@@ -36,7 +36,7 @@ class Publisher(TestIdMixin, BaseTransmuter):
 
 # Author schema (1-M with Book)
 @sqlalchemy_materia.bless(models.Author)
-class Author(BaseTransmuter, TestIdMixin):
+class Author(TestIdMixin, BaseTransmuter):
     model_config = ConfigDict(from_attributes=True)
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)

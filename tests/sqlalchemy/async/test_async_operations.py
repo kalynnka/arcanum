@@ -70,7 +70,7 @@ class TestAsyncCRUDOperations:
     """Test basic async CRUD operations."""
 
     @pytest.mark.asyncio
-    async def test_async_insert_and_select(self, async_engine: AsyncEngine):
+    async def test_async_create_and_read(self, async_engine: AsyncEngine):
         """Test async insert and select."""
         async with AsyncSession(async_engine) as session:
             author = Author(name="Insert Author", field="Chemistry")
@@ -375,7 +375,7 @@ class TestAsyncComplexQueries:
                 .having(func.count(Book["id"]) > 2)
                 .scalar_subquery()
             )
-
+            models.Author.id.in_(subq)
             stmt = select(Publisher).where(Publisher["id"].in_(subq))
             result = await session.execute(stmt)
             publishers = result.scalars().all()

@@ -164,7 +164,8 @@ class Expression(Generic[T]):
         self.inner = self.inner.not_like(other)
         return self
 
-    def in_(self, other: Iterable[T]) -> Expression[T]:
+    # TODO: I have a blank brain about how to type hint it if a subquery is passed in
+    def in_(self, other: Iterable[T] | Any) -> Expression[T]:
         self.inner = self.inner.in_(unwarp(other))
         return self
 
