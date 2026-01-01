@@ -292,7 +292,7 @@ class TestResultMappings:
             row = rows[0]
 
             # Access by column name
-            assert "name" in row.keys() or Author in row.keys()
+            assert "Author" in row.keys()
 
     def test_mappings_with_specific_columns(self, engine: Engine):
         """Test mappings() with specific column selection."""
@@ -303,10 +303,10 @@ class TestResultMappings:
             from tests import models
 
             stmt = select(
-                models.Author.id,
-                models.Author.name,
-                models.Author.field,
-            ).where(models.Author.name == "Column Mapping")
+                Author["id"],
+                Author["name"],
+                Author["field"],
+            ).where(Author["name"] == "Column Mapping")
             result = session.execute(stmt)
 
             rows = result.mappings().all()

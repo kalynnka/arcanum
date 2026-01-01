@@ -30,6 +30,7 @@ from sqlalchemy.engine.result import (
     _UniqueFilterType,
     _WithKeys,
 )
+from sqlalchemy.engine.row import RowMapping
 from sqlalchemy.sql.base import _generative
 
 _T = TypeVar("_T", bound=Any)
@@ -248,8 +249,8 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             scalar_adapter=self.scalar_adapter,
         )
 
-    def mappings(self):
-        raise NotImplementedError("AdaptedMappingResult is not implemented yet.")
+    def mappings(self) -> AdaptedMappingResult:
+        return AdaptedMappingResult(self)
 
 
 class AdaptedScalarResult(ScalarResult[_R]):
@@ -408,3 +409,104 @@ class AdaptedFrozenResult(FrozenResult[_TP]):
         result._attributes = self._attributes  # type: ignore
         result._source_supports_scalars = self._source_supports_scalars
         return result
+
+
+class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
+    __slots__ = ()
+
+    _generate_rows = True
+    _post_creational_filter = operator.attrgetter("_mapping")
+
+    _real_result: AdaptedResult[Any]
+
+    adapter: TypeAdapter
+    scalar_adapter: TypeAdapter
+
+    def __init__(self, result: AdaptedResult[Any]):
+        self._real_result = result
+        self._metadata = result._metadata
+        self._unique_filter_state = result._unique_filter_state
+        if result._source_supports_scalars:
+            self._metadata = self._metadata._reduce([0])
+
+        self.adapter = result.adapter
+        self.scalar_adapter = result.scalar_adapter
+
+    @_generative
+    def unique(self, strategy: Optional[_UniqueFilterType] = None) -> Self:
+        self._unique_filter_state = (set(), strategy)
+        return self
+
+    def columns(self, *col_expressions: _KeyIndexType) -> Self:
+        return self._column_slices(col_expressions)
+
+    def partitions(self, size: int | None = None) -> Iterator[Sequence[dict[str, Any]]]:
+        while True:
+            partition = self._manyrow_getter(self, size)
+            if partition:
+                yield tuple(
+                    dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+                    for row in partition
+                )
+            else:
+                break
+
+    def fetchone(self) -> Optional[dict[str, Any]]:
+        row = self._onerow_getter(self)
+        if row is _NO_ROW:
+            return None
+        else:
+            return dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+
+    def fetchmany(self, size: int | None = None) -> Sequence[dict[str, Any]]:
+        return tuple(
+            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            for row in self._manyrow_getter(size)
+        )
+
+    def fetchall(self) -> Sequence[dict[str, Any]]:
+        """A synonym for the :meth:`AdaptedMappingResult.all` method."""
+        return tuple(
+            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            for row in self._allrows()
+        )
+
+    def first(self) -> dict[str, Any] | None:
+        return (
+            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            if (
+                row := self._only_one_row(
+                    raise_for_second_row=False,
+                    raise_for_none=False,
+                    scalar=False,
+                )
+            )
+            else None
+        )
+
+    def all(self) -> Sequence[dict[str, Any]]:
+        return tuple(
+            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            for row in self._allrows()
+        )
+
+    def one(self) -> dict[str, Any]:
+        row = self._only_one_row(
+            raise_for_second_row=True,
+            raise_for_none=True,
+            scalar=False,
+        )
+        return dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+
+    def one_or_none(self) -> dict[str, Any] | None:
+        return (
+            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            if (
+                row := self._only_one_row(
+                    raise_for_second_row=True,
+                    raise_for_none=False,
+                    scalar=False,
+                )
+            )
+            else None
+        )
