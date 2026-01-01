@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import ForeignKey, Integer, String, Text, Uuid
@@ -159,7 +160,7 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     books: Mapped[list[Book]] = relationship(
         secondary=BookCategory.__table__,

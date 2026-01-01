@@ -76,7 +76,7 @@ class Category(TestIdMixin, BaseTransmuter):
 
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
     name: str
-    description: str
+    description: str | None = None
 
     books: RelationCollection[Book] = Relationships()
 

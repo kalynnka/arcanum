@@ -12,12 +12,16 @@ reuses sync code via greenlet, so comprehensive testing is done in sync tests.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+from uuid import UUID
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import selectinload
 
 from arcanum.materia.sqlalchemy import AsyncSession
+from tests import models
 from tests.schemas import Author, Book, Publisher
 
 
@@ -26,16 +30,16 @@ class TestAsyncSessionContextManagement:
 
     @pytest.mark.asyncio
     async def test_async_session_auto_commit_on_success(
-        self, async_engine: AsyncEngine
+        self, async_engine: AsyncEngine, test_id: UUID
     ):
         """Test that async session auto-commits on successful exit."""
         async with AsyncSession(async_engine) as session:
-            author = Author(name="Async Author", field="Physics")
-            session.add(author)
-            await session.flush()
+            async with session.begin():
+                author = Author(name="Async Author", field="Physics", test_id=test_id)
+                session.add(author)
+                await session.flush()
+                author.revalidate()
 
-        # Verify committed
-        author.revalidate()
         async with AsyncSession(async_engine) as session:
             fetched = await session.get_one(Author, author.id)
             assert fetched.name == "Async Author"
@@ -129,8 +133,6 @@ class TestAsyncResultStreaming:
             session.add_all(authors)
             await session.flush()
 
-        # Stream results
-        async with AsyncSession(async_engine) as session:
             stmt = select(Author).where(Author["name"].startswith("Stream Author"))
             result = await session.stream(stmt)
 
@@ -152,8 +154,6 @@ class TestAsyncResultStreaming:
             session.add_all(authors)
             await session.flush()
 
-        # Stream in partitions
-        async with AsyncSession(async_engine) as session:
             stmt = select(Author).where(Author["name"].startswith("Partition Author"))
             result = await session.stream(stmt)
 
@@ -169,14 +169,18 @@ class TestAsyncResultStreaming:
     async def test_async_stream_unique(self, async_engine: AsyncEngine):
         """Test async streaming with unique() to deduplicate joined results."""
         async with AsyncSession(async_engine) as session:
-            # Create author with books
+            # Create author and publisher with books
             author = Author(name="Unique Test", field="Chemistry")
+            publisher = Publisher(name="Test Publisher", country="USA")
             book1 = Book(title="Book 1", year=2023)
             book2 = Book(title="Book 2", year=2024)
             book1.author.value = author
             book2.author.value = author
+            book1.publisher.value = publisher
+            book2.publisher.value = publisher
 
             session.add(author)
+            session.add(publisher)
             await session.flush()
 
             # Join query - without unique() would return author twice
@@ -184,7 +188,7 @@ class TestAsyncResultStreaming:
                 select(Author)
                 .join(Book)
                 .where(Author["name"] == "Unique Test")
-                .options(selectinload(Author.books))
+                .options(selectinload(models.Author.books))
             )
 
             result = await session.stream(stmt)
@@ -204,28 +208,40 @@ class TestAsyncRelationships:
     async def test_async_eager_loading_selectinload(self, async_engine: AsyncEngine):
         """Test async eager loading with selectinload."""
         async with AsyncSession(async_engine) as session:
-            # Create author with books
+            # Create author and publisher with books
             author = Author(name="Eager Author", field="Literature")
+            publisher = Publisher(name="Eager Publisher", country="USA")
             books = [Book(title=f"Eager Book {i}", year=2020 + i) for i in range(3)]
             for book in books:
                 book.author.value = author
+                book.publisher.value = publisher
 
             session.add(author)
+            session.add(publisher)
             await session.flush()
 
-        # Query with eager loading
-        author.revalidate()
-        async with AsyncSession(async_engine) as session:
+            author.revalidate()
+
+            session.expunge_all()
+
             stmt = (
                 select(Author)
                 .where(Author["id"] == author.id)
-                .options(selectinload(Author.books))
+                .options(selectinload(models.Author.books))
             )
             result = await session.execute(stmt)
             fetched = result.scalars().one()
 
             # Books should be loaded without additional query
-            assert len(fetched.books) == 3
+
+            # Verify no additional SQL is issued when accessing books
+            with patch.object(
+                session.sync_session, "execute", wraps=session.sync_session.execute
+            ) as mock_execute:
+                # Access books - should not trigger additional SQL
+                assert len(fetched.books) == 3
+                # No execute calls should have been made
+                assert mock_execute.call_count == 0
 
     @pytest.mark.asyncio
     async def test_async_many_to_many_relationship(self, async_engine: AsyncEngine):
@@ -234,9 +250,11 @@ class TestAsyncRelationships:
 
         async with AsyncSession(async_engine) as session:
             # Create book with categories
-            author = Author(name="M2M Author", field="Science")
+            author = Author(name="M2M Author", field="Physics")
+            publisher = Publisher(name="M2M Publisher", country="UK")
             book = Book(title="M2M Book", year=2024)
             book.author.value = author
+            book.publisher.value = publisher
 
             cat1 = Category(name="Async Cat 1")
             cat2 = Category(name="Async Cat 2")
@@ -245,13 +263,13 @@ class TestAsyncRelationships:
             session.add(book)
             await session.flush()
 
-        # Query with relationship loading
-        book.revalidate()
-        async with AsyncSession(async_engine) as session:
+            book.revalidate()
+            session.expunge_all()
+
             stmt = (
                 select(Book)
                 .where(Book["id"] == book.id)
-                .options(selectinload(Book.categories))
+                .options(selectinload(models.Book.categories))
             )
             result = await session.execute(stmt)
             fetched = result.scalars().one()
@@ -260,6 +278,15 @@ class TestAsyncRelationships:
             assert len(fetched.categories) == 2
             cat_names = {cat.name for cat in fetched.categories}
             assert cat_names == {"Async Cat 1", "Async Cat 2"}
+
+            # Verify no additional SQL is issued when accessing categories
+            with patch.object(
+                session.sync_session, "execute", wraps=session.sync_session.execute
+            ) as mock_execute:
+                # Access categories - should not trigger additional SQL
+                _ = [cat.name for cat in fetched.categories]
+                # No execute calls should have been made
+                assert mock_execute.call_count == 0
 
 
 class TestAsyncComplexQueries:
@@ -272,11 +299,14 @@ class TestAsyncComplexQueries:
             # Create test data
             author1 = Author(name="Join Author 1", field="Physics")
             author2 = Author(name="Join Author 2", field="Biology")
+            publisher = Publisher(name="Join Publisher", country="USA")
 
             book1 = Book(title="Join Book 1", year=2020)
             book2 = Book(title="Join Book 2", year=2023)
             book1.author.value = author1
             book2.author.value = author2
+            book1.publisher.value = publisher
+            book2.publisher.value = publisher
 
             session.add_all([book1, book2])
             await session.flush()
@@ -296,12 +326,15 @@ class TestAsyncComplexQueries:
 
         async with AsyncSession(async_engine) as session:
             # Create test data
-            author = Author(name="Agg Author", field="Mathematics")
+            author = Author(name="Agg Author", field="History")
+            publisher = Publisher(name="Agg Publisher", country="UK")
             books = [Book(title=f"Agg Book {i}", year=2020 + i) for i in range(5)]
             for book in books:
                 book.author.value = author
+                book.publisher.value = publisher
 
             session.add(author)
+            session.add(publisher)
             await session.flush()
 
             # Aggregate query
@@ -326,7 +359,7 @@ class TestAsyncComplexQueries:
             # Create test data
             publisher = Publisher(name="Subquery Pub", country="USA")
             books = [Book(title=f"Subquery Book {i}", year=2020 + i) for i in range(3)]
-            author = Author(name="Subquery Author", field="Computer Science")
+            author = Author(name="Subquery Author", field="Literature")
             for book in books:
                 book.publisher.value = publisher
                 book.author.value = author
