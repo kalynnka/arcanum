@@ -55,9 +55,10 @@ class TestSessionContextManagement:
 
     def test_session_rollback_on_exception(self, engine: Engine):
         """Test that changes are rolled back on exception."""
+        author_id = 999999
         try:
             with Session(engine) as session:
-                author = Author(name="Rollback Test", field="Chemistry")
+                author = Author(id=author_id, name="Rollback Test", field="Chemistry")
                 session.add(author)
                 session.flush()
                 author_id = author.id
