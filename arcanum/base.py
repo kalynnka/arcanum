@@ -286,9 +286,18 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         super().__init__(**data)
 
         if (provider := type(self).__transmuter_provider__) is not None:
-            provided = provider(
-                **self.model_dump(exclude=set(type(self).model_associations.keys()))
+            model_fields = type(self).model_fields
+            included = self.model_dump(
+                exclude=set(type(self).model_associations.keys()),
+                by_alias=True,
             )
+            excluded = {
+                model_fields[name].alias or name: getattr(self, name)
+                for name in type(self).model_fields.keys()
+                - type(self).model_associations.keys()
+                if model_fields[name].exclude
+            }
+            provided = provider(**included, **excluded)
             provided.transmuter_proxy = self
             self.__transmuter_provided__ = provided
         else:
@@ -319,14 +328,15 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
             instance = cached or data.transmuter_proxy
             if instance is None or instance._revalidating:
-                preprocessed = cls.__transmuter_materia__.before_validator(data, info)
-                instance = handler(preprocessed)
+                materia = cls.__transmuter_materia__
+                instance = handler(materia.before_validator(cls, data, info))
                 instance.__transmuter_provided__ = data
                 data.transmuter_proxy = instance
-                instance = cls.__transmuter_materia__.after_validator(instance, info)
+                instance = materia.after_validator(instance, info)
 
             if not cached:
                 context[data] = instance
+
         else:
             # normal initialization
             instance = handler(data)

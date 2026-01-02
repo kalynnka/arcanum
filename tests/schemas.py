@@ -107,6 +107,90 @@ class Review(TestIdMixin, BaseTransmuter):
     book: Relation[Optional[Book]] = Relationship()
 
 
+@sqlalchemy_materia.bless(models.Company)
+class Company(TestIdMixin, BaseTransmuter):
+    """Schema for Company with circular references."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    industry: str
+
+    departments: RelationCollection[Department] = Relationships()
+    employees: RelationCollection[Employee] = Relationships()
+    ceo: Relation[Optional[Employee]] = Relationship()
+    client_projects: RelationCollection[Project] = Relationships()
+
+
+@sqlalchemy_materia.bless(models.Department)
+class Department(TestIdMixin, BaseTransmuter):
+    """Schema for Department with circular references."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    budget: int
+
+    company: Relation[Company] = Relationship()
+    employees: RelationCollection[Employee] = Relationships()
+    projects: RelationCollection[Project] = Relationships()
+    teams: RelationCollection[Team] = Relationships()
+
+
+@sqlalchemy_materia.bless(models.Employee)
+class Employee(TestIdMixin, BaseTransmuter):
+    """Schema for Employee - hub of circular references."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    title: str
+    salary: int
+
+    company: Relation[Company] = Relationship()
+    company_as_ceo: Relation[Optional[Company]] = Relationship()
+    department: Relation[Department] = Relationship()
+    led_projects: RelationCollection[Project] = Relationships()
+    managed_teams: RelationCollection[Team] = Relationships()
+    teams: RelationCollection[Team] = Relationships()
+
+
+@sqlalchemy_materia.bless(models.Project)
+class Project(TestIdMixin, BaseTransmuter):
+    """Schema for Project with circular references."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    description: str
+    status: str
+
+    department: Relation[Department] = Relationship()
+    lead: Relation[Employee] = Relationship()
+    team: Relation[Optional[Team]] = Relationship()
+    client_company: Relation[Optional[Company]] = Relationship()
+
+
+@sqlalchemy_materia.bless(models.Team)
+class Team(TestIdMixin, BaseTransmuter):
+    """Schema for Team completing circular paths."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    size: int
+
+    department: Relation[Department] = Relationship()
+    manager: Relation[Employee] = Relationship()
+    project: Relation[Project] = Relationship()
+    members: RelationCollection[Employee] = Relationships()
+
+
 # Book schema (M-1 with Author, M-1 with Publisher, 1-1 with BookDetail, M-M with Category, optional 1-1 with Translator, optional 1-M with Reviews)
 @sqlalchemy_materia.bless(models.Book)
 class Book(TestIdMixin, BaseTransmuter):

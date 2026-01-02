@@ -574,18 +574,6 @@ class TestEagerLoading:
                     "selectinload should prevent implicit SQL when accessing relationships"
                 )
 
-    @pytest.mark.skip(
-        reason=(
-            "Nested selectinload with circular M-M backrefs causes Pydantic recursion error. "
-            "When using selectinload(Book.categories).selectinload(Category.books), SQLAlchemy "
-            "eagerly loads all related objects in a single result set. Pydantic's validation "
-            "then encounters the same ORM object (Book) being validated while it's already "
-            "in the validation stack (Book -> Category -> Book), triggering a recursion_loop "
-            "error. This is a known limitation when combining eager loading of circular "
-            "relationships with Pydantic validation. Workaround: use lazy loading for the "
-            "backref side, or avoid nested selectinload on circular relationships."
-        )
-    )
     def test_selectinload_many_to_many_with_backref(self, engine: Engine):
         """Test selectinload M-M where backref creates circular validation.
 

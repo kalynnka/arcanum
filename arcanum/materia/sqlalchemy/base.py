@@ -4,6 +4,7 @@ from pydantic import ValidationInfo
 from sqlalchemy import inspect
 from sqlalchemy.orm import InstanceState
 
+from arcanum.base import BaseTransmuter
 from arcanum.materia.base import TM, BaseMateria
 
 
@@ -11,7 +12,9 @@ class LoadedData: ...
 
 
 class SqlalchemyMateria(BaseMateria):
-    def before_validator(self, materia: Any, info: ValidationInfo):
+    def before_validator(
+        self, transmuter_type: type[BaseTransmuter], materia: Any, info: ValidationInfo
+    ):
         inspector: InstanceState = inspect(materia)
 
         # don't use a dict to hold loaded data here
@@ -21,11 +24,17 @@ class SqlalchemyMateria(BaseMateria):
         loaded = LoadedData()
 
         # Get all loaded attributes from sqlalchemy orm instance
-        # skip unloaded attributes to prevent pydantic
-        # from firing the loadings on all lazy attributes in orm
-        loaded.__dict__ = {
-            name: attr.loaded_value for name, attr in inspector.attrs.items()
-        }
+        # relationships/associations are excluded here to avoid circular validation
+        # related objects will be validated when they are visited
+        data = {}
+        for field_name, field_info in transmuter_type.model_fields.items():
+            if field_name in transmuter_type.model_associations:
+                continue
+            used_name = field_info.alias or field_name
+            if used_name in inspector.attrs:
+                data[used_name] = inspector.attrs[used_name].loaded_value
+
+        loaded.__dict__ = data
 
         return loaded
 

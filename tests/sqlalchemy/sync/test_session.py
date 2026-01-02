@@ -330,7 +330,6 @@ class TestFlushCommitRollback:
             session.add(author)
             session.flush()
             author.revalidate()
-            author_id = author.id
             session.commit()  # Commit the original insert
 
             # Modify

@@ -71,7 +71,9 @@ class BaseMateria:
         return decorator
 
     @staticmethod
-    def before_validator(materia: M, info: ValidationInfo) -> M:
+    def before_validator(
+        transmuter_type: type[T], materia: M, info: ValidationInfo
+    ) -> M:
         return materia
 
     @staticmethod

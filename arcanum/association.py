@@ -232,15 +232,6 @@ class Relation(Association[Optional_T]):
             when_used="always",
         )
 
-    @classmethod
-    def __pydantic_before_validator__(
-        cls,
-        value: Any,
-        info: core_schema.ValidationInfo,
-    ):
-        # usually means relationship's loading is not yet completed
-        return None if value is LoaderCallableStatus.NO_VALUE else value
-
     @property
     def __provided__(self) -> Any:
         if not self.__instance__:
@@ -359,15 +350,6 @@ class RelationCollection(list[T], Association[T]):
             schema=core_schema.list_schema(handler.generate_schema(generic_type)),
             when_used="always",
         )
-
-    @classmethod
-    def __pydantic_before_validator__(
-        cls,
-        value: Any,
-        info: core_schema.ValidationInfo,
-    ) -> Any:
-        # usually means relationship's loading is not yet completed
-        return [] if value is LoaderCallableStatus.NO_VALUE else value
 
     def __init__(self, payloads: Iterable[T] | None = None):
         super().__init__()
