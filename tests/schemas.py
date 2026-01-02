@@ -22,6 +22,15 @@ class TestIdMixin(BaseModel):
     test_id: Optional[UUID] = Field(default=None, frozen=True, exclude=True)
 
 
+# BookCategory schema (M-M association with composite PK)
+@sqlalchemy_materia.bless(models.BookCategory)
+class BookCategory(TestIdMixin, BaseTransmuter):
+    model_config = ConfigDict(from_attributes=True)
+
+    book_id: Annotated[int, Identity] = Field(frozen=True)
+    category_id: Annotated[int, Identity] = Field(frozen=True)
+
+
 # Publisher schema (1-M with Book)
 @sqlalchemy_materia.bless(models.Publisher)
 class Publisher(TestIdMixin, BaseTransmuter):

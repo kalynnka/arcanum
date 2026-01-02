@@ -19,7 +19,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.exc import NoResultFound
 
 from arcanum.materia.sqlalchemy import Session
-from tests.schemas import Author, Book, Publisher
+from tests.schemas import Author, Book, BookCategory, Category, Publisher
 
 
 class TestSessionContextManagement:
@@ -89,8 +89,8 @@ class TestSessionContextManagement:
                 assert inner_author.name == "Outer"
 
 
-class TestGetOne:
-    """Test Session.get_one method."""
+class TestSessionHelpers:
+    """Test Session helper methods: get, get_one, one, one_or_none, first, bulk, count, list, partitions."""
 
     def test_get_one_success(self, engine: Engine):
         """Test get_one returns object when found."""
@@ -122,6 +122,483 @@ class TestGetOne:
             # get_one raises
             with pytest.raises(NoResultFound):
                 session.get_one(Author, 999999)
+
+    def test_one_success(self, engine: Engine):
+        """Test one returns single matching entity."""
+        with Session(engine) as session:
+            author1 = Author(name="One Test 1", field="Physics")
+            author2 = Author(name="One Test 2", field="Biology")
+            session.add_all([author1, author2])
+            session.flush()
+            author1.revalidate()
+
+            # Query by filter
+            result = session.one(Author, name="One Test 1")
+            assert result.id == author1.id
+            assert result.name == "One Test 1"
+
+    def test_one_with_expressions(self, engine: Engine):
+        """Test one with where expressions."""
+        with Session(engine) as session:
+            author1 = Author(name="Expression Test 1", field="Physics")
+            author2 = Author(name="Expression Test 2", field="Physics")
+            session.add_all([author1, author2])
+            session.flush()
+            author1.revalidate()
+
+            # Query with expression
+            result = session.one(
+                Author, expressions=[Author["name"] == "Expression Test 1"]
+            )
+            assert result.id == author1.id
+
+    def test_one_raises_when_no_result(self, engine: Engine):
+        """Test one raises NoResultFound when no match."""
+        with Session(engine) as session:
+            with pytest.raises(NoResultFound):
+                session.one(Author, name="Nonexistent")
+
+    def test_one_raises_when_multiple_results(self, engine: Engine):
+        """Test one raises when multiple results found."""
+        from sqlalchemy.exc import MultipleResultsFound
+
+        with Session(engine) as session:
+            author1 = Author(name="Multiple Test", field="Physics")
+            author2 = Author(name="Multiple Test", field="Biology")
+            session.add_all([author1, author2])
+            session.flush()
+
+            with pytest.raises(MultipleResultsFound):
+                session.one(Author, name="Multiple Test")
+
+    def test_one_or_none_success(self, engine: Engine):
+        """Test one_or_none returns entity when found."""
+        with Session(engine) as session:
+            author = Author(name="One Or None Test", field="Chemistry")
+            session.add(author)
+            session.flush()
+            author.revalidate()
+
+            result = session.one_or_none(Author, name="One Or None Test")
+            assert result is not None
+            assert result.id == author.id
+
+    def test_one_or_none_returns_none(self, engine: Engine):
+        """Test one_or_none returns None when not found."""
+        with Session(engine) as session:
+            result = session.one_or_none(Author, name="Nonexistent")
+            assert result is None
+
+    def test_one_or_none_with_filters_and_expressions(self, engine: Engine):
+        """Test one_or_none with both filters and expressions."""
+        with Session(engine) as session:
+            author = Author(name="Combined Test", field="Physics")
+            session.add(author)
+            session.flush()
+            author.revalidate()
+
+            result = session.one_or_none(
+                Author, expressions=[Author["field"] == "Physics"], name="Combined Test"
+            )
+            assert result is not None
+            assert result.id == author.id
+
+    def test_first_returns_first_result(self, engine: Engine):
+        """Test first returns first entity."""
+        with Session(engine) as session:
+            author1 = Author(name="First Test A", field="Physics")
+            author2 = Author(name="First Test B", field="Physics")
+            session.add_all([author1, author2])
+            session.flush()
+            author1.revalidate()
+            author2.revalidate()
+
+            result = session.first(Author, name="First Test A")
+            assert result is not None
+            assert result.id == author1.id
+
+    def test_first_with_ordering(self, engine: Engine):
+        """Test first respects order_by."""
+        with Session(engine) as session:
+            author1 = Author(name="Z Author", field="Physics")
+            author2 = Author(name="A Author", field="Physics")
+            session.add_all([author1, author2])
+            session.flush()
+            author1.revalidate()
+            author2.revalidate()
+
+            # Order by name ascending
+            result = session.first(Author, order_bys=[Author["name"]], field="Physics")
+            assert result is not None
+            assert result.name == "A Author"
+
+    def test_first_returns_none_when_no_match(self, engine: Engine):
+        """Test first returns None when no results."""
+        with Session(engine) as session:
+            result = session.first(Author, name="Nonexistent")
+            assert result is None
+
+    def test_bulk_single_pk(self, engine: Engine):
+        """Test bulk retrieval with single primary key."""
+        with Session(engine) as session:
+            authors = [Author(name=f"Bulk Test {i}", field="Physics") for i in range(5)]
+            session.add_all(authors)
+            session.flush()
+            for a in authors:
+                a.revalidate()
+
+            ids = [a.id for a in authors]
+            results = session.bulk(Author, ids)
+
+            assert len(results) == 5
+            assert all(r is not None for r in results)
+            assert set(r.id for r in results if r) == set(ids)
+
+    def test_bulk_preserves_order(self, engine: Engine):
+        """Test bulk returns results in same order as idents."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"Order Test {i}", field="Physics") for i in range(3)
+            ]
+            session.add_all(authors)
+            session.flush()
+            for a in authors:
+                a.revalidate()
+
+            ids = [a.id for a in authors]
+            # Request in reverse order
+            reversed_ids = list(reversed(ids))
+            results = session.bulk(Author, reversed_ids)
+
+            assert [r.id for r in results if r] == reversed_ids
+
+    def test_bulk_with_missing_ids(self, engine: Engine):
+        """Test bulk handles missing IDs with None."""
+        with Session(engine) as session:
+            author = Author(name="Bulk Missing Test", field="Biology")
+            session.add(author)
+            session.flush()
+            author.revalidate()
+
+            # Request existing and non-existing IDs
+            ids = [author.id, 999999, 888888]
+            results = session.bulk(Author, ids)
+
+            assert len(results) == 3
+            assert results[0] is not None
+            assert results[0].id == author.id
+            assert results[1] is None
+            assert results[2] is None
+
+    def test_bulk_empty_list(self, engine: Engine):
+        """Test bulk with empty list returns empty list."""
+        with Session(engine) as session:
+            results = session.bulk(Author, [])
+            assert results == []
+
+    def test_bulk_composite_pk(self, engine: Engine):
+        """Test bulk retrieval with composite primary key."""
+        with Session(engine) as session:
+            # Create authors and publishers first
+            author = Author(name="Bulk Comp Author", field="Physics")
+            publisher = Publisher(name="Bulk Comp Pub", country="USA")
+            session.add_all([author, publisher])
+            session.flush()
+            author.revalidate()
+            publisher.revalidate()
+
+            # Create books and categories
+            book1 = Book(title="Book 1", year=2020)
+            book1.author.value = author
+            book1.publisher.value = publisher
+            book2 = Book(title="Book 2", year=2021)
+            book2.author.value = author
+            book2.publisher.value = publisher
+            book3 = Book(title="Book 3", year=2022)
+            book3.author.value = author
+            book3.publisher.value = publisher
+            cat1 = Category(name="Category 1", description="Desc 1")
+            cat2 = Category(name="Category 2", description="Desc 2")
+            session.add_all([book1, book2, book3, cat1, cat2])
+            session.flush()
+            book1.revalidate()
+            book2.revalidate()
+            book3.revalidate()
+            cat1.revalidate()
+            cat2.revalidate()
+
+            # Create associations via relationships
+            book1.categories.append(cat1)
+            book2.categories.append(cat1)
+            book2.categories.append(cat2)
+            session.flush()
+
+            # Bulk retrieve with composite PK tuples
+            idents = [
+                (book1.id, cat1.id),
+                (book2.id, cat1.id),
+                (book2.id, cat2.id),
+            ]
+            results = session.bulk(BookCategory, idents)
+
+            assert len(results) == 3
+            assert all(r is not None for r in results)
+            # Verify each result matches the expected ident
+            assert results[0]
+            assert results[0].book_id == book1.id
+            assert results[0].category_id == cat1.id
+            assert results[1]
+            assert results[1].book_id == book2.id
+            assert results[1].category_id == cat1.id
+            assert results[2]
+            assert results[2].book_id == book2.id
+            assert results[2].category_id == cat2.id
+
+    def test_bulk_composite_pk_with_missing(self, engine: Engine):
+        """Test bulk with composite PK handles missing entries."""
+        with Session(engine) as session:
+            # Create author and publisher first
+            author = Author(name="Bulk Comp Missing Author", field="Biology")
+            publisher = Publisher(name="Bulk Comp Missing Pub", country="UK")
+            session.add_all([author, publisher])
+            session.flush()
+            author.revalidate()
+            publisher.revalidate()
+
+            # Create one book and category
+            book = Book(title="Bulk Comp Missing", year=2023)
+            book.author.value = author
+            book.publisher.value = publisher
+            cat = Category(name="Bulk Comp Cat", description="Desc")
+            session.add_all([book, cat])
+            session.flush()
+            book.revalidate()
+            cat.revalidate()
+
+            # Create association via relationship
+            book.categories.append(cat)
+            session.flush()
+
+            # Request existing and non-existing composite PKs
+            idents = [
+                (book.id, cat.id),  # exists
+                (999999, 888888),  # doesn't exist
+                (777777, 666666),  # doesn't exist
+            ]
+            results = session.bulk(BookCategory, idents)
+
+            assert len(results) == 3
+            assert results[0] is not None
+            assert results[0].book_id == book.id
+            assert results[0].category_id == cat.id
+            assert results[1] is None
+            assert results[2] is None
+
+    def test_count_all(self, engine: Engine):
+        """Test count without filters."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"Count Test {i}", field="Physics") for i in range(7)
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            count = session.count(Author, field="Physics")
+            assert count >= 7  # At least the ones we added
+
+    def test_count_with_filters(self, engine: Engine):
+        """Test count with filter_by."""
+        with Session(engine) as session:
+            author1 = Author(name="Count Filter 1", field="Physics")
+            author2 = Author(name="Count Filter 2", field="Biology")
+            author3 = Author(name="Count Filter 3", field="Physics")
+            session.add_all([author1, author2, author3])
+            session.flush()
+
+            count_physics = session.count(Author, field="Physics")
+            count_biology = session.count(Author, field="Biology")
+
+            assert count_physics >= 2
+            assert count_biology >= 1
+
+    def test_count_with_expressions(self, engine: Engine):
+        """Test count with where expressions."""
+        with Session(engine) as session:
+            authors = [
+                Author(name="Count Expr A", field="Physics"),
+                Author(name="Count Expr B", field="Physics"),
+                Author(name="Count Expr C", field="Biology"),
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            count = session.count(
+                Author,
+                expressions=[
+                    Author["name"].like("Count Expr%"),
+                    Author["field"] == "Physics",
+                ],
+            )
+            assert count >= 2
+
+    def test_list_basic(self, engine: Engine):
+        """Test list returns multiple entities."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"List Test {i}", field="Chemistry") for i in range(5)
+            ]
+            session.add_all(authors)
+            session.flush()
+            for a in authors:
+                a.revalidate()
+
+            results = session.list(Author, field="Chemistry")
+            assert len(results) >= 5
+
+    def test_list_with_limit(self, engine: Engine):
+        """Test list respects limit."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"Limit Test {i}", field="Chemistry") for i in range(10)
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            results = session.list(Author, limit=3, field="Chemistry")
+            assert len(results) == 3
+
+    def test_list_with_offset(self, engine: Engine):
+        """Test list respects offset."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"Offset Test {i}", field="Literature") for i in range(5)
+            ]
+            session.add_all(authors)
+            session.flush()
+            for a in authors:
+                a.revalidate()
+
+            # Get all, then with offset
+            all_results = session.list(
+                Author, limit=100, order_bys=[Author["id"]], field="Literature"
+            )
+            offset_results = session.list(
+                Author,
+                limit=100,
+                offset=2,
+                order_bys=[Author["id"]],
+                field="Literature",
+            )
+
+            assert len(all_results) >= 5
+            assert len(offset_results) >= 3
+            assert offset_results[0].id == all_results[2].id
+
+    def test_list_with_ordering(self, engine: Engine):
+        """Test list respects order_by."""
+        with Session(engine) as session:
+            author1 = Author(name="Z List", field="History")
+            author2 = Author(name="A List", field="History")
+            author3 = Author(name="M List", field="History")
+            session.add_all([author1, author2, author3])
+            session.flush()
+
+            results = session.list(Author, order_bys=[Author["name"]], field="History")
+            names = [r.name for r in results]
+            # Should be in ascending order
+            assert names.index("A List") < names.index("M List") < names.index("Z List")
+
+    def test_list_with_filters_and_expressions(self, engine: Engine):
+        """Test list with both filters and expressions."""
+        with Session(engine) as session:
+            authors = [
+                Author(name="List Filter A", field="Physics"),
+                Author(name="List Filter B", field="Physics"),
+                Author(name="List Filter C", field="Biology"),
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            results = session.list(
+                Author,
+                expressions=[Author["name"].like("List Filter%")],
+                field="Physics",
+            )
+            assert len(results) >= 2
+            assert all(r.field == "Physics" for r in results)
+
+    def test_partitions_yields_chunks(self, engine: Engine):
+        """Test partitions yields results in chunks."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"Partition Test {i}", field="Astronomy") for i in range(15)
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            partitions_list = list(
+                session.partitions(Author, size=5, limit=15, field="Astronomy")
+            )
+
+            # Should have 3 partitions of size 5
+            assert len(partitions_list) >= 3
+            for partition in partitions_list[:3]:
+                assert len(partition) <= 5
+
+    def test_partitions_respects_limit(self, engine: Engine):
+        """Test partitions respects total limit."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"Part Limit Test {i}", field="History") for i in range(20)
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            all_results = []
+            for partition in session.partitions(
+                Author, size=3, limit=7, field="History"
+            ):
+                all_results.extend(partition)
+
+            assert len(all_results) == 7
+
+    def test_partitions_with_ordering(self, engine: Engine):
+        """Test partitions respects ordering."""
+        with Session(engine) as session:
+            authors = [
+                Author(name=f"Part Order {chr(65 + i)}", field="Literature")
+                for i in range(10)
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            all_results = []
+            for partition in session.partitions(
+                Author, size=3, order_bys=[Author["name"]], field="Literature"
+            ):
+                all_results.extend(partition)
+
+            names = [r.name for r in all_results]
+            # Should be in ascending order
+            assert names == sorted(names)
+
+    def test_partitions_with_filters(self, engine: Engine):
+        """Test partitions with filters."""
+        with Session(engine) as session:
+            authors = [
+                Author(name="Part Filter Physics 1", field="Physics"),
+                Author(name="Part Filter Physics 2", field="Physics"),
+                Author(name="Part Filter Biology 1", field="Biology"),
+            ]
+            session.add_all(authors)
+            session.flush()
+
+            all_results = []
+            for partition in session.partitions(Author, size=2, field="Physics"):
+                all_results.extend(partition)
+
+            assert len(all_results) >= 2
+            assert all(r.field == "Physics" for r in all_results)
 
 
 class TestObjectIdentity:

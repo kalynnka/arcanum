@@ -22,7 +22,7 @@ from sqlalchemy.orm import selectinload
 
 from arcanum.materia.sqlalchemy import AsyncSession
 from tests import models
-from tests.schemas import Author, Book, Publisher
+from tests.schemas import Author, Book, BookCategory, Category, Publisher
 
 
 class TestAsyncSessionContextManagement:
@@ -383,3 +383,291 @@ class TestAsyncComplexQueries:
             publisher.revalidate()
             assert len(publishers) == 1
             assert publishers[0].id == publisher.id
+
+
+class TestAsyncSessionHelpers:
+    """Test AsyncSession helper methods: one, one_or_none, first, bulk, count, list, partitions."""
+
+    @pytest.mark.asyncio
+    async def test_async_one_success(self, async_engine: AsyncEngine):
+        """Test one returns single matching entity."""
+        async with AsyncSession(async_engine) as session:
+            author1 = Author(name="Async One Test 1", field="Physics")
+            author2 = Author(name="Async One Test 2", field="Biology")
+            session.add_all([author1, author2])
+            await session.flush()
+            author1.revalidate()
+
+            result = await session.one(Author, name="Async One Test 1")
+            assert result.id == author1.id
+            assert result.name == "Async One Test 1"
+
+    @pytest.mark.asyncio
+    async def test_async_one_or_none_success(self, async_engine: AsyncEngine):
+        """Test one_or_none returns entity when found."""
+        async with AsyncSession(async_engine) as session:
+            author = Author(name="Async One Or None", field="Chemistry")
+            session.add(author)
+            await session.flush()
+            author.revalidate()
+
+            result = await session.one_or_none(Author, name="Async One Or None")
+            assert result is not None
+            assert result.id == author.id
+
+    @pytest.mark.asyncio
+    async def test_async_one_or_none_returns_none(self, async_engine: AsyncEngine):
+        """Test one_or_none returns None when not found."""
+        async with AsyncSession(async_engine) as session:
+            result = await session.one_or_none(Author, name="Nonexistent")
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_async_first_with_ordering(self, async_engine: AsyncEngine):
+        """Test first respects order_by."""
+        async with AsyncSession(async_engine) as session:
+            author1 = Author(name="Z Async Author", field="Physics")
+            author2 = Author(name="A Async Author", field="Physics")
+            session.add_all([author1, author2])
+            await session.flush()
+            author1.revalidate()
+            author2.revalidate()
+
+            result = await session.first(
+                Author, order_bys=[Author["name"]], field="Physics"
+            )
+            assert result is not None
+            assert result.name == "A Async Author"
+
+    @pytest.mark.asyncio
+    async def test_async_first_returns_none_when_no_match(
+        self, async_engine: AsyncEngine
+    ):
+        """Test first returns None when no results."""
+        async with AsyncSession(async_engine) as session:
+            result = await session.first(Author, name="Nonexistent Async")
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_single_pk(self, async_engine: AsyncEngine):
+        """Test bulk retrieval with single primary key."""
+        async with AsyncSession(async_engine) as session:
+            authors = [
+                Author(name=f"Async Bulk Test {i}", field="Physics") for i in range(5)
+            ]
+            session.add_all(authors)
+            await session.flush()
+            for a in authors:
+                a.revalidate()
+
+            ids = [a.id for a in authors]
+            results = await session.bulk(Author, ids)
+
+            assert len(results) == 5
+            assert all(r is not None for r in results)
+            assert set(r.id for r in results if r) == set(ids)
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_preserves_order(self, async_engine: AsyncEngine):
+        """Test bulk returns results in same order as idents."""
+        async with AsyncSession(async_engine) as session:
+            authors = [
+                Author(name=f"Async Order Test {i}", field="Physics") for i in range(3)
+            ]
+            session.add_all(authors)
+            await session.flush()
+            for a in authors:
+                a.revalidate()
+
+            ids = [a.id for a in authors]
+            reversed_ids = list(reversed(ids))
+            results = await session.bulk(Author, reversed_ids)
+
+            assert [r.id for r in results if r] == reversed_ids
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_with_missing_ids(self, async_engine: AsyncEngine):
+        """Test bulk handles missing IDs with None."""
+        async with AsyncSession(async_engine) as session:
+            author = Author(name="Async Bulk Missing", field="Biology")
+            session.add(author)
+            await session.flush()
+            author.revalidate()
+
+            ids = [author.id, 999999, 888888]
+            results = await session.bulk(Author, ids)
+
+            assert len(results) == 3
+            assert results[0] is not None
+            assert results[0].id == author.id
+            assert results[1] is None
+            assert results[2] is None
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_empty_list(self, async_engine: AsyncEngine):
+        """Test bulk with empty list returns empty list."""
+        async with AsyncSession(async_engine) as session:
+            results = await session.bulk(Author, [])
+            assert results == []
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_composite_pk(self, async_engine: AsyncEngine):
+        """Test bulk retrieval with composite primary key."""
+        async with AsyncSession(async_engine) as session:
+            # Create authors and publishers first
+            author = Author(name="Async Bulk Comp Author", field="Physics")
+            publisher = Publisher(name="Async Bulk Comp Pub", country="USA")
+            session.add_all([author, publisher])
+            await session.flush()
+            author.revalidate()
+            publisher.revalidate()
+
+            # Create books and categories
+            book1 = Book(title="Async Book 1", year=2020)
+            book1.author.value = author
+            book1.publisher.value = publisher
+            book2 = Book(title="Async Book 2", year=2021)
+            book2.author.value = author
+            book2.publisher.value = publisher
+            cat1 = Category(name="Async Category 1", description="Desc 1")
+            cat2 = Category(name="Async Category 2", description="Desc 2")
+            session.add_all([book1, book2, cat1, cat2])
+            await session.flush()
+            book1.revalidate()
+            book2.revalidate()
+            cat1.revalidate()
+            cat2.revalidate()
+
+            # Create associations via relationships
+            # Need to await to load the collection in async context
+            await book1.categories
+            await book2.categories
+            book1.categories.append(cat1)
+            book2.categories.append(cat1)
+            book2.categories.append(cat2)
+            await session.flush()
+
+            # Bulk retrieve with composite PK tuples
+            idents = [
+                (book1.id, cat1.id),
+                (book2.id, cat1.id),
+                (book2.id, cat2.id),
+            ]
+            results = await session.bulk(BookCategory, idents)
+
+            assert len(results) == 3
+            assert all(r is not None for r in results)
+            assert results[0].book_id == book1.id
+            assert results[0].category_id == cat1.id
+            assert results[1].book_id == book2.id
+            assert results[1].category_id == cat1.id
+            assert results[2].book_id == book2.id
+            assert results[2].category_id == cat2.id
+
+    @pytest.mark.asyncio
+    async def test_async_bulk_composite_pk_with_missing(
+        self, async_engine: AsyncEngine
+    ):
+        """Test bulk with composite PK handles missing entries."""
+        async with AsyncSession(async_engine) as session:
+            # Create author and publisher first
+            author = Author(name="Async Bulk Missing Author", field="Biology")
+            publisher = Publisher(name="Async Bulk Missing Pub", country="UK")
+            session.add_all([author, publisher])
+            await session.flush()
+            author.revalidate()
+            publisher.revalidate()
+
+            # Create one book and category
+            book = Book(title="Async Bulk Comp Missing", year=2023)
+            book.author.value = author
+            book.publisher.value = publisher
+            cat = Category(name="Async Bulk Comp Cat", description="Desc")
+            session.add_all([book, cat])
+            await session.flush()
+            book.revalidate()
+            cat.revalidate()
+
+            # Create association via relationship
+            await book.categories  # Load collection first
+            book.categories.append(cat)
+            await session.flush()
+
+            # Request existing and non-existing composite PKs
+            idents = [
+                (book.id, cat.id),  # exists
+                (999999, 888888),  # doesn't exist
+                (777777, 666666),  # doesn't exist
+            ]
+            results = await session.bulk(BookCategory, idents)
+
+            assert len(results) == 3
+            assert results[0] is not None
+            assert results[0].book_id == book.id
+            assert results[0].category_id == cat.id
+            assert results[1] is None
+            assert results[2] is None
+
+    @pytest.mark.asyncio
+    async def test_async_count_with_filters(self, async_engine: AsyncEngine):
+        """Test count with filter_by."""
+        async with AsyncSession(async_engine) as session:
+            author1 = Author(name="Async Count Filter 1", field="Physics")
+            author2 = Author(name="Async Count Filter 2", field="Biology")
+            author3 = Author(name="Async Count Filter 3", field="Physics")
+            session.add_all([author1, author2, author3])
+            await session.flush()
+
+            count_physics = await session.count(Author, field="Physics")
+            count_biology = await session.count(Author, field="Biology")
+
+            assert count_physics >= 2
+            assert count_biology >= 1
+
+    @pytest.mark.asyncio
+    async def test_async_list_basic(self, async_engine: AsyncEngine):
+        """Test list returns multiple entities."""
+        async with AsyncSession(async_engine) as session:
+            authors = [
+                Author(name=f"Async List Test {i}", field="Chemistry") for i in range(5)
+            ]
+            session.add_all(authors)
+            await session.flush()
+            for a in authors:
+                a.revalidate()
+
+            results = await session.list(Author, field="Chemistry")
+            assert len(results) >= 5
+
+    @pytest.mark.asyncio
+    async def test_async_list_with_limit(self, async_engine: AsyncEngine):
+        """Test list respects limit."""
+        async with AsyncSession(async_engine) as session:
+            authors = [
+                Author(name=f"Async Limit Test {i}", field="History") for i in range(10)
+            ]
+            session.add_all(authors)
+            await session.flush()
+
+            results = await session.list(Author, limit=3, field="History")
+            assert len(results) == 3
+
+    @pytest.mark.asyncio
+    async def test_async_list_with_ordering(self, async_engine: AsyncEngine):
+        """Test list respects order_by."""
+        async with AsyncSession(async_engine) as session:
+            author1 = Author(name="Z Async List", field="Literature")
+            author2 = Author(name="A Async List", field="Literature")
+            author3 = Author(name="M Async List", field="Literature")
+            session.add_all([author1, author2, author3])
+            await session.flush()
+
+            results = await session.list(
+                Author, order_bys=[Author["name"]], field="Literature"
+            )
+            names = [r.name for r in results]
+            assert (
+                names.index("A Async List")
+                < names.index("M Async List")
+                < names.index("Z Async List")
+            )
