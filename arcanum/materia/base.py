@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Optional, Self, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generator,
+    Generic,
+    Optional,
+    Self,
+    TypeVar,
+)
 
 from pydantic import ValidationInfo
+from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
 
 if TYPE_CHECKING:
+    from arcanum.association import Association
     from arcanum.base import BaseTransmuter, TransmuterMetaclass
 
 M = TypeVar("M", bound=Any)
@@ -79,6 +91,22 @@ class BaseMateria:
     @staticmethod
     def after_validator(transmuter: T, info: ValidationInfo) -> T:
         return transmuter
+
+    @staticmethod
+    @contextmanager
+    def association_load_context(association: Association) -> Generator[None]:
+        try:
+            yield
+        except MissingGreenlet as missing_greenlet_error:
+            association.__loaded__ = False
+            raise RuntimeError(
+                f"""Failed to load relation '{association.field_name}' of {association.__instance__.__class__.__name__} for a greenlet is expected. Are you trying to get the relation in a sync context ? Await the {association.__instance__.__class__.__name__}.{association.field_name} instance to trigger the sqlalchemy async IO first."""
+            ) from missing_greenlet_error
+        except InvalidRequestError as invalid_request_error:
+            association.__loaded__ = False
+            raise RuntimeError(
+                f"""Failed to load relation '{association.field_name}' of {association.__instance__.__class__.__name__} for the relation's loading strategy is set to 'raise' in sqlalchemy. Specify the relationship with selectinload in statement options or change the loading strategy to 'select' or 'selectin' instead."""
+            ) from invalid_request_error
 
 
 class NoOpMateria(BaseMateria):

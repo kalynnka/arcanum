@@ -25,21 +25,15 @@ from typing import (
 
 from pydantic import Field, GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import core_schema
-from sqlalchemy import Insert, Select, inspect
-from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
-from sqlalchemy.orm import (
-    LoaderCallableStatus,
-    WriteOnlyCollection,
-)
 from sqlalchemy.util import greenlet_spawn
 
+from arcanum.materia.base import active_materia
 from arcanum.utils import get_cached_adapter
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
     from arcanum.base import BaseTransmuter
-    from arcanum.materia.sqlalchemy.database import Session
 
 A = TypeVar("A")
 T = TypeVar("T", bound="BaseTransmuter")
@@ -240,20 +234,10 @@ class Relation(Association[Optional_T]):
             )
         if not self.__instance_provider__:
             return None
-        try:
+
+        with active_materia.get().association_load_context(self):
             # TODO: provider not exist, or the provided value is None both return None
-            value = getattr(self.__instance_provider__, self.used_name)
-            return value
-        except MissingGreenlet as missing_greenlet_error:
-            self.__loaded__ = False
-            raise RuntimeError(
-                f"""Failed to load relation '{self.field_name}' of {self.__instance__.__class__.__name__} for a greenlet is expected. Are you trying to get the relation in a sync context ? Await the {self.__instance__.__class__.__name__}.{self.field_name} instance to trigger the sqlalchemy async IO first."""
-            ) from missing_greenlet_error
-        except InvalidRequestError as invalid_request_error:
-            self.__loaded__ = False
-            raise RuntimeError(
-                f"""Failed to load relation '{self.field_name}' of {self.__instance__.__class__.__name__} for the relation's loading strategy is set to 'raise' in sqlalchemy. Specify the relationship with selectinload in statement options or change the loading strategy to 'select' or 'selectin' instead."""
-            ) from invalid_request_error
+            return getattr(self.__instance_provider__, self.used_name)
 
     @__provided__.setter
     def __provided__(self, object: Any):
@@ -307,6 +291,7 @@ class Relation(Association[Optional_T]):
         return self.__payloads__
 
     def __await__(self):
+        # TODO: currently this only supports sqlalchemy's async loading
         return greenlet_spawn(self._load).__await__()
 
     @property
@@ -357,7 +342,7 @@ class RelationCollection(list[T], Association[T]):
         self.__loaded__ = False
         self.__payloads__ = list(payloads) if payloads else []
 
-    @cached_property
+    @property
     def __provided__(self) -> list[Any] | None:
         # The return type is something like a list of T_Protocol's provider instances (orm objects),
         # which is actually returned by sqlalchemy's attr descriptor.
@@ -368,18 +353,9 @@ class RelationCollection(list[T], Association[T]):
             )
         if not self.__instance_provider__:
             return None
-        try:
+
+        with active_materia.get().association_load_context(self):
             return getattr(self.__instance__.__transmuter_provided__, self.used_name)
-        except MissingGreenlet as missing_greenlet_error:
-            self.__loaded__ = False
-            raise RuntimeError(
-                f"""Failed to load relation '{self.field_name}' of {self.__instance__.__class__.__name__} for a greenlet is expected. Are you trying to get the relation in a sync context ? Await the {self.__instance__.__class__.__name__}.{self.field_name} instance to trigger the sqlalchemy async IO first."""
-            ) from missing_greenlet_error
-        except InvalidRequestError as invalid_request_error:
-            self.__loaded__ = False
-            raise RuntimeError(
-                f"""Failed to load relation '{self.field_name}' of {self.__instance__.__class__.__name__} for the relation's loading strategy is set to 'raise' in sqlalchemy. Specify the relationship with selectinload in statement options or change the loading strategy to 'select' or 'selectin' instead."""
-            ) from invalid_request_error
 
     @cached_property
     def __list_validator__(self) -> TypeAdapter[list[T]]:
@@ -452,6 +428,7 @@ class RelationCollection(list[T], Association[T]):
         return self
 
     def __await__(self):
+        # TODO: currently this only supports sqlalchemy's async loading
         return greenlet_spawn(self._load).__await__()
 
     @overload
@@ -642,61 +619,6 @@ class RelationCollection(list[T], Association[T]):
         reverse: bool = False,
     ):
         super().sort(key=key, reverse=reverse)
-
-
-class PassiveRelationCollection(RelationCollection[T]):
-    # new items kept in __payloads__, and passive relation collection never keep loaded items
-    __payloads__: list[T]
-    batch_size: int = 10
-
-    @classmethod
-    def __pydantic_before_validator__(
-        cls,
-        value: Any,
-        info: core_schema.ValidationInfo,
-    ):
-        # usually means relationship's loading is not yet completed
-        return [] if value is LoaderCallableStatus.NO_VALUE else value
-
-    @cached_property
-    def __provided__(self) -> WriteOnlyCollection[T]:
-        if not self.__instance__:
-            raise RuntimeError(
-                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
-            )
-        return getattr(self.__instance__.__transmuter_provided__, self.used_name)
-
-    @cached_property
-    def __session__(self) -> Session:
-        if not self.__instance__:
-            raise RuntimeError(
-                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
-            )
-        return inspect(self.__instance__.__transmuter_provided__).session  # pyright: ignore[reportOptionalMemberAccess]
-
-    def prepare(self, instance: BaseTransmuter, field_name: str):
-        super().prepare(instance, field_name)
-        # disabled for no longer duck typed as list for now
-        if self.__payloads__:
-            # use append to add new assigned objects,
-            # when an async dialect is choosed, extend would be expected called inside a greenlet,
-            # while the prepare method is always called sync-ly inside host's getter which may lead to a greenlet await_only error.
-            # WriteOnlyCollection.add uses session.add so it is always sync.
-            for item in self.__payloads__:
-                self.append(item)
-        self.__payloads__.clear()
-
-    def select(self) -> Select[tuple[T]]:
-        return self.__provided__.select()
-
-    def insert(self) -> Insert:
-        return self.__provided__.insert()
-
-    def update(self) -> Any:
-        return self.__provided__.update()
-
-    def delete(self) -> Any:
-        return self.__provided__.delete()
 
 
 Relationship = partial(Field, default_factory=Relation, frozen=True)
