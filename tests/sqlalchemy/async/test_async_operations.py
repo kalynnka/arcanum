@@ -557,10 +557,13 @@ class TestAsyncSessionHelpers:
 
             assert len(results) == 3
             assert all(r is not None for r in results)
+            assert results[0]
             assert results[0].book_id == book1.id
             assert results[0].category_id == cat1.id
+            assert results[1]
             assert results[1].book_id == book2.id
             assert results[1].category_id == cat1.id
+            assert results[2]
             assert results[2].book_id == book2.id
             assert results[2].category_id == cat2.id
 
