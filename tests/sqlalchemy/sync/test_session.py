@@ -14,10 +14,13 @@ Tests:
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.exc import NoResultFound
 
+from arcanum.base import BaseTransmuter
 from arcanum.materia.sqlalchemy import Session
 from tests.schemas import Author, Book, BookCategory, Category, Publisher
 
@@ -951,3 +954,291 @@ class TestExpunge:
 
             assert new1 is not author1
             assert new2 is not author2
+
+
+class TestMerge:
+    """Test Session.merge functionality."""
+
+    def test_merge_detached_object(self, engine: Engine, test_id: uuid.UUID):
+        """Test merging a detached object back into a session."""
+        author_id = None
+        author_detached = None
+
+        # Create and detach
+        with Session(engine) as session1:
+            author = Author(name="Merge Test", field="Physics", test_id=test_id)
+            session1.add(author)
+            session1.flush()
+            author.revalidate()
+            session1.commit()
+            author_id = author.id
+            author_detached = author
+
+        # Author is now detached
+
+        # Merge into new session
+        with Session(engine) as session2:
+            author_merged = session2.merge(author_detached)
+
+            # Verify the merged object is revalidated and works correctly
+            assert author_merged.id == author_id
+            assert author_merged.name == "Merge Test"
+            assert author_merged.field == "Physics"
+
+            # Modify and flush to verify it's properly tracked
+            author_merged.name = "Merged and Modified"
+            session2.flush()
+            session2.commit()
+
+        # Verify changes persisted
+        with Session(engine) as session3:
+            author_final = session3.get_one(Author, author_id)
+            assert author_final.name == "Merged and Modified"
+
+    def test_merge_with_modifications(self, engine: Engine):
+        """Test merging an object with pending modifications."""
+        # Create original
+        with Session(engine) as session1:
+            author = Author(name="Original Name", field="Biology")
+            session1.add(author)
+            session1.flush()
+            author.revalidate()
+            session1.commit()
+            author_id = author.id
+
+        # Get in new session and modify
+        with Session(engine) as session2:
+            author = session2.get_one(Author, author_id)
+
+        # Now author is detached, modify it
+        author.name = "Modified While Detached"
+
+        # Merge back into another session
+        with Session(engine) as session3:
+            merged = session3.merge(author)
+            assert merged.name == "Modified While Detached"
+            session3.commit()
+
+        # Verify persistence
+        with Session(engine) as session4:
+            final = session4.get_one(Author, author_id)
+            assert final.name == "Modified While Detached"
+
+    def test_merge_with_load_false(self, engine: Engine):
+        """Test merge with load=False parameter."""
+        # Create object
+        with Session(engine) as session1:
+            author = Author(name="Load Test", field="Chemistry")
+            session1.add(author)
+            session1.flush()
+            author.revalidate()
+            session1.commit()
+            author_id = author.id
+
+        # Get and detach
+        with Session(engine) as session2:
+            author = session2.get_one(Author, author_id)
+
+        # Merge with load=False
+        with Session(engine) as session3:
+            merged = session3.merge(author, load=False)
+            assert merged.id == author_id
+            assert merged.name == "Load Test"
+
+    def test_merge_updates_existing_in_session(self, engine: Engine):
+        """Test that merge updates an already-loaded instance."""
+        author_id = None
+
+        # Create
+        with Session(engine) as session1:
+            author = Author(name="Initial Name", field="History")
+            session1.add(author)
+            session1.flush()
+            author.revalidate()
+            session1.commit()
+            author_id = author.id
+
+        with Session(engine) as session2:
+            # Load into session
+            author_in_session = session2.get_one(Author, author_id)
+            assert author_in_session.name == "Initial Name"
+
+            # Create a detached copy with different data
+            author_detached = Author(id=author_id, name="Updated Name", field="History")
+
+            # Merge should update the existing instance
+            merged = session2.merge(author_detached)
+
+            # The merged instance should be the same object that was already in session
+            assert merged is author_in_session
+            assert merged.name == "Updated Name"
+
+    def test_merge_returns_revalidated_transmuter(self, engine: Engine):
+        """Test that merge returns a properly revalidated transmuter instance."""
+        # Create
+        with Session(engine) as session1:
+            publisher = Publisher(name="Test Publisher", country="USA")
+            session1.add(publisher)
+            session1.flush()
+            publisher.revalidate()
+            session1.commit()
+            publisher_id = publisher.id
+
+        # Detach
+        with Session(engine) as session2:
+            publisher = session2.get_one(Publisher, publisher_id)
+
+        # Merge and verify it's a transmuter with proper proxy
+        with Session(engine) as session3:
+            merged = session3.merge(publisher)
+
+            # Should be a transmuter instance
+            assert isinstance(merged, Publisher)
+            assert isinstance(merged, BaseTransmuter)
+
+            # Should have proper ORM backing
+            assert merged.__transmuter_provided__ is not None
+
+            # Modify to ensure it's properly tracked
+            merged.name = "Updated Publisher"
+            session3.flush()
+            session3.commit()
+
+        # Verify update persisted
+        with Session(engine) as session4:
+            final = session4.get_one(Publisher, publisher_id)
+            assert final.name == "Updated Publisher"
+
+    def test_merge_maintains_validation_context(self, engine: Engine):
+        """Test that merge properly maintains validation context."""
+        # Create a simple object
+        with Session(engine) as session1:
+            author = Author(name="Context Author", field="Physics")
+            session1.add(author)
+            session1.flush()
+            author.revalidate()
+            session1.commit()
+            author_id = author.id
+
+        # Load and detach
+        with Session(engine) as session2:
+            author = session2.get_one(Author, author_id)
+
+        # Merge into new session
+        with Session(engine) as session3:
+            merged_author = session3.merge(author)
+
+            # The merged object should be in the validation context
+            assert merged_author.__transmuter_provided__ in session3._validation_context
+            assert (
+                session3._validation_context[merged_author.__transmuter_provided__]
+                is merged_author
+            )
+
+    def test_merge_with_multiple_objects(self, engine: Engine):
+        """Test merging multiple objects."""
+        # Create multiple objects
+        with Session(engine) as session1:
+            author1 = Author(name="Author 1", field="Biology")
+            author2 = Author(name="Author 2", field="Chemistry")
+
+            session1.add_all([author1, author2])
+            session1.flush()
+            author1.revalidate()
+            author2.revalidate()
+            session1.commit()
+
+            author1_id = author1.id
+            author2_id = author2.id
+
+        # Load and detach
+        with Session(engine) as session2:
+            author1 = session2.get_one(Author, author1_id)
+            author2 = session2.get_one(Author, author2_id)
+
+        # Modify while detached
+        author1.name = "Modified Author 1"
+        author2.field = "Astronomy"
+
+        # Merge both into new session
+        with Session(engine) as session3:
+            merged1 = session3.merge(author1)
+            merged2 = session3.merge(author2)
+
+            # Verify modifications are present
+            assert merged1.name == "Modified Author 1"
+            assert merged2.field == "Astronomy"
+
+            session3.flush()
+            session3.commit()
+
+        # Verify all changes persisted
+        with Session(engine) as session4:
+            final1 = session4.get_one(Author, author1_id)
+            final2 = session4.get_one(Author, author2_id)
+
+            assert final1.name == "Modified Author 1"
+            assert final2.field == "Astronomy"
+
+    def test_merge_after_expunge(self, engine: Engine):
+        """Test merging an object that was explicitly expunged."""
+        with Session(engine) as session1:
+            author = Author(name="Expunge Test", field="History")
+            session1.add(author)
+            session1.flush()
+            author.revalidate()
+            author_id = author.id
+
+            # Expunge the object
+            session1.expunge(author)
+
+            # Merge it back
+            merged = session1.merge(author)
+
+            assert merged.id == author_id
+            assert merged.name == "Expunge Test"
+
+            # Modify and commit
+            merged.field = "Literature"
+            session1.commit()
+
+        # Verify changes persisted
+        with Session(engine) as session2:
+            final = session2.get_one(Author, author_id)
+            assert final.field == "Literature"
+
+    def test_merge_revalidates_transmuter(self, engine: Engine):
+        """Test that merge properly revalidates the transmuter instance."""
+        # Create
+        with Session(engine) as session1:
+            category = Category(name="Test Category", description="Test Description")
+            session1.add(category)
+            session1.flush()
+            category.revalidate()
+            session1.commit()
+            category_id = category.id
+
+        # Load and detach
+        with Session(engine) as session2:
+            category = session2.get_one(Category, category_id)
+
+        # Verify it's detached (no longer in session)
+        # Merge into new session
+        with Session(engine) as session3:
+            merged = session3.merge(category)
+
+            # Verify returned instance is properly setup
+            assert isinstance(merged, Category)
+            assert isinstance(merged, BaseTransmuter)
+            assert merged.id == category_id
+            assert merged.name == "Test Category"
+
+            # Modify to confirm tracking
+            merged.description = "Updated Description"
+            session3.flush()
+            session3.commit()
+
+        # Verify update
+        with Session(engine) as session4:
+            final = session4.get_one(Category, category_id)
+            assert final.description == "Updated Description"

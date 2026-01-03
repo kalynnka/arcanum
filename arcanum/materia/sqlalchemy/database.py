@@ -18,14 +18,23 @@ from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
 from sqlalchemy.engine.result import Result, ScalarResult
 from sqlalchemy.ext.asyncio import AsyncSession as SqlalchemyAsyncSession
-from sqlalchemy.orm import InstanceState, Query
+from sqlalchemy.orm import (
+    InstanceState,
+    Query,
+    attributes,
+    object_mapper,
+)
 from sqlalchemy.orm import Session as SqlalchemySession
-from sqlalchemy.orm._typing import OrmExecuteOptionsParameter
+from sqlalchemy.orm._typing import (
+    OrmExecuteOptionsParameter,
+    _IdentityKeyType,
+)
 from sqlalchemy.orm.base import _state_mapper
 from sqlalchemy.orm.interfaces import ORMOption
 from sqlalchemy.orm.session import (
     JoinTransactionMode,
     _BindArguments,
+    _EntityBindKey,
     _PKIdentityArgument,
     _SessionBind,
     _SessionBindKey,
@@ -52,6 +61,7 @@ from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
 from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
+O = TypeVar("O", bound=object)
 
 
 def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
@@ -343,13 +353,39 @@ class Session(SqlalchemySession):
         load: bool = True,
         options: Sequence[ORMOption] | None = None,
     ) -> T:
-        super().merge(instance, load=load, options=options)
-        return instance.revalidate()
+        if self._warn_on_events:
+            self._flush_warning("Session.merge()")
+
+        _recursive: dict[InstanceState[Any], object] = {}
+        _resolve_conflict_map: dict[_IdentityKeyType[Any], object] = {}
+
+        if load:
+            # flush current contents if we expect to load data
+            self._autoflush()
+
+        object_mapper(instance)  # verify mapped
+        autoflush = self.autoflush
+        try:
+            self.autoflush = False
+            merged = self._merge(
+                attributes.instance_state(instance),
+                attributes.instance_dict(instance.__transmuter_provided__),
+                load=load,
+                options=options,
+                _recursive=_recursive,
+                _resolve_conflict_map=_resolve_conflict_map,
+            )
+            instance = type(instance).model_validate(merged)
+            instance.revalidate()
+            return instance
+        finally:
+            self.autoflush = autoflush
 
     def enable_relationship_loading(self, obj: BaseTransmuter) -> None:
         super().enable_relationship_loading(obj.__transmuter_provided__)
         self._validation_context[obj.__transmuter_provided__] = obj
 
+    @overload
     def get(
         self,
         entity: type[T],
@@ -361,7 +397,32 @@ class Session(SqlalchemySession):
         identity_token: Optional[Any] = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
-    ) -> Optional[T]:
+    ) -> Optional[T]: ...
+    @overload
+    def get(
+        self,
+        entity: _EntityBindKey[O],
+        ident: _PKIdentityArgument,
+        *,
+        options: Sequence[ORMOption] | None = None,
+        populate_existing: bool = False,
+        with_for_update: ForUpdateParameter = None,
+        identity_token: Optional[Any] = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+    ) -> Optional[O]: ...
+    def get(
+        self,
+        entity: type[T] | _EntityBindKey[O],
+        ident: _PKIdentityArgument,
+        *,
+        options: Sequence[ORMOption] | None = None,
+        populate_existing: bool = False,
+        with_for_update: ForUpdateParameter = None,
+        identity_token: Optional[Any] = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+    ) -> Optional[T] | Optional[O]:
         if isinstance(entity, type) and issubclass(entity, BaseTransmuter):
             instance = super().get(
                 # sqlalchemy materia requires transumter to have a provider blessed
@@ -376,7 +437,7 @@ class Session(SqlalchemySession):
             )
             return entity.model_validate(instance) if instance else None
         else:
-            return super().get(
+            instance = super().get(
                 entity,
                 ident,
                 options=options,
@@ -386,7 +447,11 @@ class Session(SqlalchemySession):
                 execution_options=execution_options,
                 bind_arguments=bind_arguments,
             )
+            if isinstance(instance, BaseTransmuter):
+                return instance.__transmuter_provided__  # pyright: ignore[reportReturnType]
+            return instance
 
+    @overload
     def get_one(
         self,
         entity: type[T],
@@ -398,7 +463,32 @@ class Session(SqlalchemySession):
         identity_token: Optional[Any] = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
-    ) -> T:
+    ) -> T: ...
+    @overload
+    def get_one(
+        self,
+        entity: _EntityBindKey[O],
+        ident: _PKIdentityArgument,
+        *,
+        options: Optional[Sequence[ORMOption]] = None,
+        populate_existing: bool = False,
+        with_for_update: ForUpdateParameter = None,
+        identity_token: Optional[Any] = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+    ) -> O: ...
+    def get_one(
+        self,
+        entity: type[T] | _EntityBindKey[O],
+        ident: _PKIdentityArgument,
+        *,
+        options: Optional[Sequence[ORMOption]] = None,
+        populate_existing: bool = False,
+        with_for_update: ForUpdateParameter = None,
+        identity_token: Optional[Any] = None,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: Optional[_BindArguments] = None,
+    ) -> T | O:
         instance = self.get(
             entity,
             ident,
