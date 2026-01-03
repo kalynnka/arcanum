@@ -72,11 +72,10 @@ class Association(Generic[A], ABC):
         value: Any,
         info: core_schema.ValidationInfo,
     ) -> Any:
-        return value
+        return active_materia.get().__association_before_validator__(cls, value, info)
 
     def __pydantic_after_validator__(self, info: core_schema.ValidationInfo) -> Self:
-        """This method is called after the validation is done."""
-        return self
+        return active_materia.get().__association_after_validator__(self, info)
 
     @classmethod
     def __get_pydantic_generic_schema__(
@@ -344,9 +343,8 @@ class RelationCollection(list[T], Association[T]):
 
     @property
     def __provided__(self) -> list[Any] | None:
-        # The return type is something like a list of T_Protocol's provider instances (orm objects),
-        # which is actually returned by sqlalchemy's attr descriptor.
-
+        # The provided, the return type should be a duck typed list-like object provided by the current materia provider.
+        # For example, with SQLAlchemyMateria, it would be a InstrumentedList[list[...]] which is actually a sqlalchemy descriptor.
         if not self.__instance__:
             raise RuntimeError(
                 f"The relation '{self.field_name}' is not yet prepared with an owner instance."

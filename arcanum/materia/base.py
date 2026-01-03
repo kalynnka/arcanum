@@ -14,12 +14,14 @@ from typing import (
 )
 
 from pydantic import ValidationInfo
+from pydantic_core import core_schema
 
 if TYPE_CHECKING:
     from arcanum.association import Association
     from arcanum.base import BaseTransmuter, TransmuterMetaclass
 
 M = TypeVar("M", bound=Any)
+A = TypeVar("A", bound="Association")
 T = TypeVar("T", bound="BaseTransmuter")
 TM = TypeVar("TM", bound="TransmuterMetaclass")
 
@@ -82,14 +84,28 @@ class BaseMateria:
         return decorator
 
     @staticmethod
-    def before_validator(
+    def transmuter_before_validator(
         transmuter_type: type[T], materia: M, info: ValidationInfo
     ) -> M:
         return materia
 
     @staticmethod
-    def after_validator(transmuter: T, info: ValidationInfo) -> T:
+    def transmuter_after_validator(transmuter: T, info: ValidationInfo) -> T:
         return transmuter
+
+    @staticmethod
+    def __association_before_validator__(
+        association_type: type[A],
+        value: Any,
+        info: core_schema.ValidationInfo,
+    ) -> Any:
+        return value
+
+    @staticmethod
+    def __association_after_validator__(
+        association: A, info: core_schema.ValidationInfo
+    ) -> A:
+        return association
 
     @staticmethod
     @contextmanager

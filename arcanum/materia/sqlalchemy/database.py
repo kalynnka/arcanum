@@ -48,13 +48,10 @@ from arcanum.base import (
     ValidationContextT,
     validation_context,
 )
-from arcanum.expression import Expression
 from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
 from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
-
-ExpressionT = _ColumnExpressionArgument[bool] | Expression[Any]
 
 
 def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
@@ -422,7 +419,7 @@ class Session(SqlalchemySession):
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -443,7 +440,7 @@ class Session(SqlalchemySession):
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -465,7 +462,7 @@ class Session(SqlalchemySession):
         entity: type[T],
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -539,7 +536,7 @@ class Session(SqlalchemySession):
     def count(
         self,
         entity: type[T],
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -562,7 +559,7 @@ class Session(SqlalchemySession):
         # cursor: UUID | None = None, # TODO: re-enable cursor pagination when identity solution is clarified
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -594,7 +591,7 @@ class Session(SqlalchemySession):
         size: int | None = 10,
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -650,7 +647,7 @@ class AsyncSession(SqlalchemyAsyncSession):
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -667,7 +664,7 @@ class AsyncSession(SqlalchemyAsyncSession):
         self,
         entity: type[T],
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -685,7 +682,7 @@ class AsyncSession(SqlalchemyAsyncSession):
         entity: type[T],
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -718,7 +715,7 @@ class AsyncSession(SqlalchemyAsyncSession):
     async def count(
         self,
         entity: type[T],
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):
@@ -737,7 +734,7 @@ class AsyncSession(SqlalchemyAsyncSession):
         offset: int | None = None,
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
-        expressions: Iterable[ExpressionT] | None = None,
+        expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
     ):

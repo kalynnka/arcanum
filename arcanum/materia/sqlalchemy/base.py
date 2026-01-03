@@ -33,7 +33,7 @@ class SqlalchemyMateria(BaseMateria):
 
         return decorator
 
-    def before_validator(
+    def transmuter_before_validator(
         self, transmuter_type: type[BaseTransmuter], materia: Any, info: ValidationInfo
     ):
         inspector: InstanceState = inspect(materia)

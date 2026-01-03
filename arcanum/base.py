@@ -32,7 +32,6 @@ from pydantic.fields import Field, FieldInfo, PrivateAttr
 from sqlalchemy.inspection import inspect
 
 from arcanum.association import Association
-from arcanum.expression import Column
 from arcanum.materia.base import (
     BaseMateria,
     BidirectonDict,
@@ -159,21 +158,65 @@ class TransmuterMetaclass(ModelMetaclass):
 
     def __getattr__(self, name: str) -> Any:
         try:
-            return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
+            return object.__getattribute__(self, name)
         except AttributeError as e:
-            if object.__getattribute__(self, "__transmuter_complete__"):
-                provider = object.__getattribute__(self, "__transmuter_provider__")
-                if provider and hasattr(provider, name):
-                    return getattr(provider, name)
-            raise e
+            if not object.__getattribute__(self, "__transmuter_complete__"):
+                raise e
 
-    # TODO: No good way to give proper generic type to Column here
-    def __getitem__(self, item: str) -> Column[Any]:
-        if info := self.__pydantic_fields__.get(item):
-            column = Column[info.annotation](self, item, info)
-            column.__args__ = (info.annotation,)
-            return column
-        raise KeyError(f"Field '{item}' not found in {self.__name__}")
+            else:
+                fields: dict[str, FieldInfo] = object.__getattribute__(
+                    self, "__pydantic_fields__"
+                )
+                transmuter_name = object.__getattribute__(self, "__name__")
+                if info := fields.get(name):
+                    if provider := object.__getattribute__(
+                        self, "__transmuter_provider__"
+                    ):
+                        try:
+                            return object.__getattribute__(provider, info.alias or name)
+                        except AttributeError as inner:
+                            raise AttributeError(
+                                f"Attribute '{name}' (alias: '{info.alias or name}') is not defined in the materia provider for {transmuter_name}. "
+                                f"The provider {provider.__name__} does not have this attribute. "
+                                f"Ensure the provider class includes this attribute definition."
+                            ) from inner
+                    else:
+                        materia = object.__getattribute__(
+                            self, "__transmuter_materia__"
+                        )
+                        raise AttributeError(
+                            f"Transmuter {transmuter_name} has not been blessed by the active materia ({materia.__class__.__name__}). "
+                            f"Cannot access attribute '{name}' without a provider. "
+                            f"Use materia.bless() to register this transmuter with a provider."
+                        ) from e
+                raise AttributeError(
+                    f"Attribute '{name}' is not defined in transmuter {transmuter_name}. "
+                    f"Available fields: {', '.join(fields.keys())}"
+                ) from e
+
+    # TODO: Have no idea to give proper type hint to proxied provider column here
+    def __getitem__(self, name: str) -> Any:
+        if info := self.__pydantic_fields__.get(name):
+            if self.__transmuter_provider__:
+                try:
+                    return getattr(self.__transmuter_provider__, info.alias or name)
+                except AttributeError as inner:
+                    raise KeyError(
+                        f"Column '{name}' (alias: '{info.alias or name}') is not defined in the materia provider for {self.__name__}. "
+                        f"The provider {self.__transmuter_provider__.__name__} does not have this attribute. "
+                        f"Ensure the provider class includes this column definition."
+                    ) from inner
+            else:
+                materia = self.__transmuter_materia__
+                raise KeyError(
+                    f"Transmuter {self.__name__} has not been blessed by the active materia ({materia.__class__.__name__}). "
+                    f"Cannot access column '{name}' without a provider. "
+                    f"Use materia.bless() to register this transmuter with a provider."
+                )
+        raise KeyError(
+            f"Field '{name}' is not defined in transmuter {self.__name__}. "
+            f"Available fields: {', '.join(self.__pydantic_fields__.keys())}"
+        )
 
     @property
     def __transmuter_materia__(self) -> BaseMateria:
@@ -329,10 +372,10 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             instance = cached or data.transmuter_proxy
             if instance is None or instance._revalidating:
                 materia = cls.__transmuter_materia__
-                instance = handler(materia.before_validator(cls, data, info))
+                instance = handler(materia.transmuter_before_validator(cls, data, info))
                 instance.__transmuter_provided__ = data
                 data.transmuter_proxy = instance
-                instance = materia.after_validator(instance, info)
+                instance = materia.transmuter_after_validator(instance, info)
 
             if not cached:
                 context[data] = instance

@@ -498,7 +498,6 @@ class TestLoadingStrategies:
 
             # Clear session
             session.expunge_all()
-
             # Query with selectinload
             stmt = (
                 select(Book)
