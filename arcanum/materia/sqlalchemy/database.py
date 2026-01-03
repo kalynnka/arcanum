@@ -29,7 +29,7 @@ from sqlalchemy.orm._typing import (
     OrmExecuteOptionsParameter,
     _IdentityKeyType,
 )
-from sqlalchemy.orm.base import _state_mapper
+from sqlalchemy.orm.base import _O, _state_mapper
 from sqlalchemy.orm.interfaces import ORMOption
 from sqlalchemy.orm.session import (
     JoinTransactionMode,
@@ -61,7 +61,6 @@ from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
 from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
-O = TypeVar("O", bound=object)
 
 
 def resolve_statement_entities(statement: Executable) -> list[type[Any]]:
@@ -401,7 +400,7 @@ class Session(SqlalchemySession):
     @overload
     def get(
         self,
-        entity: _EntityBindKey[O],
+        entity: _EntityBindKey[_O],
         ident: _PKIdentityArgument,
         *,
         options: Sequence[ORMOption] | None = None,
@@ -410,10 +409,10 @@ class Session(SqlalchemySession):
         identity_token: Optional[Any] = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
-    ) -> Optional[O]: ...
+    ) -> Optional[_O]: ...
     def get(
         self,
-        entity: type[T] | _EntityBindKey[O],
+        entity: type[T] | _EntityBindKey[_O],
         ident: _PKIdentityArgument,
         *,
         options: Sequence[ORMOption] | None = None,
@@ -422,7 +421,7 @@ class Session(SqlalchemySession):
         identity_token: Optional[Any] = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
-    ) -> Optional[T] | Optional[O]:
+    ) -> Optional[T] | Optional[_O]:
         if isinstance(entity, type) and issubclass(entity, BaseTransmuter):
             instance = super().get(
                 # sqlalchemy materia requires transumter to have a provider blessed
@@ -467,7 +466,7 @@ class Session(SqlalchemySession):
     @overload
     def get_one(
         self,
-        entity: _EntityBindKey[O],
+        entity: _EntityBindKey[_O],
         ident: _PKIdentityArgument,
         *,
         options: Optional[Sequence[ORMOption]] = None,
@@ -476,10 +475,10 @@ class Session(SqlalchemySession):
         identity_token: Optional[Any] = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
-    ) -> O: ...
+    ) -> _O: ...
     def get_one(
         self,
-        entity: type[T] | _EntityBindKey[O],
+        entity: type[T] | _EntityBindKey[_O],
         ident: _PKIdentityArgument,
         *,
         options: Optional[Sequence[ORMOption]] = None,
@@ -488,7 +487,7 @@ class Session(SqlalchemySession):
         identity_token: Optional[Any] = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         bind_arguments: Optional[_BindArguments] = None,
-    ) -> T | O:
+    ) -> T | _O:
         instance = self.get(
             entity,
             ident,
