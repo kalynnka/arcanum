@@ -1,4 +1,16 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: arcanum_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
   postgres:
     image: postgres:15-alpine
     container_name: arcanum_postgres
