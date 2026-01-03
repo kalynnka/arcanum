@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 from pydantic import ValidationInfo
 from sqlalchemy import inspect
 from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
 from sqlalchemy.orm import InstanceState
+from sqlalchemy.util import greenlet_spawn
 
 from arcanum.association import Association
 from arcanum.base import BaseTransmuter
-from arcanum.materia.base import TM, BaseMateria
+from arcanum.materia.base import BaseMateria, T
 
 
 class LoadedData: ...
@@ -18,7 +18,7 @@ class LoadedData: ...
 
 class SqlalchemyMateria(BaseMateria):
     def bless(self, materia: type[Any]):
-        def decorator(transmuter_cls: TM) -> TM:
+        def decorator(transmuter_cls: type[T]) -> type[T]:
             if transmuter_cls in self.formulars:
                 raise RuntimeError(
                     f"Transmuter {transmuter_cls.__name__} is already blessed with {self} in {self.__class__.__name__}"
@@ -59,18 +59,25 @@ class SqlalchemyMateria(BaseMateria):
 
         return loaded
 
-    @staticmethod
-    @contextmanager
-    def association_load_context(association: Association) -> Generator[None]:
+    def load_association(self, association: Association):
+        if not association.__instance__:
+            raise RuntimeError(
+                f"The relation '{association.field_name}' is not yet prepared with an owner instance."
+            )
         try:
-            yield
+            return getattr(
+                association.__instance__.__transmuter_provided__, association.used_name
+            )
         except MissingGreenlet as missing_greenlet_error:
             association.__loaded__ = False
-            raise RuntimeError(
+            raise MissingGreenlet(
                 f"""Failed to load relation '{association.field_name}' of {association.__instance__.__class__.__name__} for a greenlet is expected. Are you trying to get the relation in a sync context ? Await the {association.__instance__.__class__.__name__}.{association.field_name} instance to trigger the sqlalchemy async IO first."""
             ) from missing_greenlet_error
         except InvalidRequestError as invalid_request_error:
             association.__loaded__ = False
-            raise RuntimeError(
+            raise InvalidRequestError(
                 f"""Failed to load relation '{association.field_name}' of {association.__instance__.__class__.__name__} for the relation's loading strategy is set to 'raise' in sqlalchemy. Specify the relationship with selectinload in statement options or change the loading strategy to 'select' or 'selectin' instead."""
             ) from invalid_request_error
+
+    def aload_association(self, association: Association) -> Any:
+        return greenlet_spawn(self.load_association, association)

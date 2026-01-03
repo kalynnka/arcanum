@@ -17,8 +17,9 @@ from uuid import UUID
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import raiseload, selectinload
 
 from arcanum.materia.sqlalchemy import AsyncSession
 from tests import models
@@ -674,3 +675,177 @@ class TestAsyncSessionHelpers:
                 < names.index("M Async List")
                 < names.index("Z Async List")
             )
+
+
+class TestAsyncLazyLoadingErrors:
+    """Test proper error handling for lazy loading in async context."""
+
+    @pytest.mark.asyncio
+    async def test_lazy_select_relationship_raises_missing_greenlet_error(
+        self, async_engine: AsyncEngine, test_id: UUID
+    ):
+        """Test that accessing lazy='select' relationship in async raises MissingGreenlet.
+
+        SQLAlchemy's default lazy loading uses synchronous IO which is not allowed
+        in async contexts. Attempting to access such a relationship should raise
+        MissingGreenlet error with a helpful message.
+        """
+        from sqlalchemy.exc import MissingGreenlet
+
+        async with AsyncSession(async_engine) as session:
+            # Create author with a book
+            author = Author(name="Lazy Test Author", field="Physics", test_id=test_id)
+            publisher = Publisher(
+                name="Lazy Test Publisher", country="USA", test_id=test_id
+            )
+            book = Book(title="Lazy Test Book", year=2023, test_id=test_id)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            session.add(author)
+            session.add(publisher)
+            await session.flush()
+            author.revalidate()
+            await session.commit()
+            author_id = author.id
+
+        # Start new session and load author without eagerly loading relationships
+        async with AsyncSession(async_engine) as session:
+            # Get author but don't load relationships
+            author = await session.get_one(Author, author_id)
+
+            # Accessing the lazy-loaded relationship without await should raise
+            with pytest.raises(MissingGreenlet) as exc_info:
+                # This will attempt synchronous IO in async context
+                _ = len(author.books)
+
+            # Verify the error message mentions the issue
+            error_msg = str(exc_info.value)
+            assert "greenlet" in error_msg.lower() or "async" in error_msg.lower()
+
+
+class TestAsyncRaiseOnSQLBehavior:
+    """Test lazy='raise' and raiseload() preventing implicit SQL in async."""
+
+    @pytest.mark.asyncio
+    async def test_raiseload_prevents_lazy_loading(
+        self, async_engine: AsyncEngine, test_id: UUID
+    ):
+        """Test that raiseload() prevents lazy loading in async context."""
+        async with AsyncSession(async_engine) as session:
+            author = Author(name="Raise Author", field="Chemistry", test_id=test_id)
+            publisher = Publisher(name="Raise Pub", country="USA", test_id=test_id)
+            book = Book(title="Raise Book", year=2024, test_id=test_id)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            session.add(book)
+            await session.flush()
+            book.revalidate()
+            book_id = book.id
+
+            # Clear session
+            session.expunge_all()
+
+            # Load book with raiseload on author
+            stmt = (
+                select(Book)
+                .where(Book["id"] == book_id)
+                .options(raiseload(models.Book.author))
+            )
+            result = await session.execute(stmt)
+            loaded_book = result.scalars().one()
+
+            # Accessing author should raise InvalidRequestError
+            with pytest.raises(
+                InvalidRequestError, match="loading strategy is set to 'raise'"
+            ):
+                _ = loaded_book.author.value
+
+    @pytest.mark.asyncio
+    async def test_raiseload_collection(self, async_engine: AsyncEngine, test_id: UUID):
+        """Test raiseload on collection relationships in async context."""
+        async with AsyncSession(async_engine) as session:
+            author = Author(
+                name="Raise Collection Author", field="Physics", test_id=test_id
+            )
+            publisher = Publisher(
+                name="Raise Collection Pub", country="USA", test_id=test_id
+            )
+
+            for i in range(2):
+                book = Book(
+                    title=f"Raise Collection Book {i}", year=2024, test_id=test_id
+                )
+                book.author.value = author
+                book.publisher.value = publisher
+                author.books.append(book)
+
+            session.add(author)
+            await session.flush()
+            author.revalidate()
+            author_id = author.id
+
+            # Clear session
+            session.expunge_all()
+
+            # Load author with raiseload on books
+            stmt = (
+                select(Author)
+                .where(Author["id"] == author_id)
+                .options(raiseload(models.Author.books))
+            )
+            result = await session.execute(stmt)
+            loaded_author = result.scalars().one()
+
+            # Accessing books collection should raise InvalidRequestError
+            # We need to iterate or access elements to trigger the lazy load
+            with pytest.raises(
+                InvalidRequestError, match="loading strategy is set to 'raise'"
+            ):
+                _ = len(loaded_author.books)
+
+    @pytest.mark.asyncio
+    async def test_raiseload_with_explicit_load(
+        self, async_engine: AsyncEngine, test_id: UUID
+    ):
+        """Test that raiseload doesn't prevent explicitly loaded relationships."""
+        async with AsyncSession(async_engine) as session:
+            author = Author(
+                name="Explicit Load Author", field="Biology", test_id=test_id
+            )
+            publisher = Publisher(
+                name="Explicit Load Pub", country="USA", test_id=test_id
+            )
+            book = Book(title="Explicit Load Book", year=2024, test_id=test_id)
+            book.author.value = author
+            book.publisher.value = publisher
+
+            session.add(book)
+            await session.flush()
+            book.revalidate()
+            book_id = book.id
+
+            # Clear session
+            session.expunge_all()
+
+            # Load book with raiseload on author BUT also selectinload on publisher
+            stmt = (
+                select(Book)
+                .where(Book["id"] == book_id)
+                .options(
+                    raiseload(models.Book.author),
+                    selectinload(models.Book.publisher),
+                )
+            )
+            result = await session.execute(stmt)
+            loaded_book = result.scalars().one()
+
+            # Accessing publisher should work (was explicitly loaded)
+            assert loaded_book.publisher.value.name == "Explicit Load Pub"
+
+            # But accessing author should still raise
+            with pytest.raises(
+                InvalidRequestError, match="loading strategy is set to 'raise'"
+            ):
+                _ = loaded_book.author.value

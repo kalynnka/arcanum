@@ -25,7 +25,6 @@ from typing import (
 
 from pydantic import Field, GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import core_schema
-from sqlalchemy.util import greenlet_spawn
 
 from arcanum.materia.base import active_materia
 from arcanum.utils import get_cached_adapter
@@ -175,6 +174,15 @@ class Association(Generic[A], ABC):
         self.__loaded__ = False
         self.__payloads__ = payloads
 
+    def __await__(self):
+        return self._aload().__await__()
+
+    def _load(self):
+        raise NotImplementedError()
+
+    def _aload(self):
+        raise NotImplementedError()
+
     def prepare(self, instance: BaseTransmuter, field_name: str):
         if self.__instance__ is not None:
             return
@@ -227,23 +235,14 @@ class Relation(Association[Optional_T]):
 
     @property
     def __provided__(self) -> Any:
-        if not self.__instance__:
-            raise RuntimeError(
-                f"The relation '{self.field_name}' is not yet prepared to be assigned with an owner instance."
-            )
         if not self.__instance_provider__:
             return None
 
-        with active_materia.get().association_load_context(self):
-            # TODO: provider not exist, or the provided value is None both return None
-            return getattr(self.__instance_provider__, self.used_name)
+        # TODO: provider not exist, or the provided value is None both return None
+        return getattr(self.__instance_provider__, self.used_name)
 
     @__provided__.setter
     def __provided__(self, object: Any):
-        if not self.__instance__:
-            raise RuntimeError(
-                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
-            )
         if not self.__instance_provider__:
             return  # No provider, skip syncing
         setattr(self.__instance_provider__, self.used_name, object)
@@ -273,6 +272,8 @@ class Relation(Association[Optional_T]):
         if not self.__instance__ or self.__loaded__:
             return self.__payloads__
 
+        active_materia.get().load_association(self)
+
         # A: No provided, None
         # B: provided value is None
         if not self.__provided__:
@@ -280,7 +281,6 @@ class Relation(Association[Optional_T]):
 
         if self.__payloads__ is not None and self.__payloads__.__transmuter_provided__:
             # Already loaded by ORM (e.g., selectinload), no need to set back
-            pass
             self.__provided__ = self.__payloads__.__transmuter_provided__
         else:
             self.__payloads__ = self.validate_python(self.__provided__)
@@ -289,9 +289,27 @@ class Relation(Association[Optional_T]):
 
         return self.__payloads__
 
-    def __await__(self):
-        # TODO: currently this only supports sqlalchemy's async loading
-        return greenlet_spawn(self._load).__await__()
+    async def _aload(self) -> Optional_T:
+        # maybe during deepcopy from field default, or the relationship is already loaded
+        if not self.__instance__ or self.__loaded__:
+            return self.__payloads__
+
+        await active_materia.get().aload_association(self)
+
+        # A: No provided, None
+        # B: provided value is None
+        if not self.__provided__:
+            return self.__payloads__
+
+        if self.__payloads__ is not None and self.__payloads__.__transmuter_provided__:
+            # Already loaded by ORM (e.g., selectinload), no need to set back
+            self.__provided__ = self.__payloads__.__transmuter_provided__
+        else:
+            self.__payloads__ = self.validate_python(self.__provided__)
+
+        self.__loaded__ = True
+
+        return self.__payloads__
 
     @property
     @ensure_loaded
@@ -343,17 +361,11 @@ class RelationCollection(list[T], Association[T]):
 
     @property
     def __provided__(self) -> list[Any] | None:
-        # The provided, the return type should be a duck typed list-like object provided by the current materia provider.
+        # The return type should be a duck typed list-like object provided by the current materia provider.
         # For example, with SQLAlchemyMateria, it would be a InstrumentedList[list[...]] which is actually a sqlalchemy descriptor.
-        if not self.__instance__:
-            raise RuntimeError(
-                f"The relation '{self.field_name}' is not yet prepared with an owner instance."
-            )
         if not self.__instance_provider__:
             return None
-
-        with active_materia.get().association_load_context(self):
-            return getattr(self.__instance__.__transmuter_provided__, self.used_name)
+        return getattr(self.__instance_provider__, self.used_name)
 
     @cached_property
     def __list_validator__(self) -> TypeAdapter[list[T]]:
@@ -403,9 +415,11 @@ class RelationCollection(list[T], Association[T]):
         if self.__loaded__:
             return self
 
+        active_materia.get().load_association(self)
+
         # A: No provided, None
         # B: provided value is empty, []
-        if not self.__provided__:
+        if not (self.__provided__):
             return self
 
         # TODO: Better way to avoid duplication relationship append ?
@@ -419,15 +433,38 @@ class RelationCollection(list[T], Association[T]):
             # If the length of __provided__ is not equal to the length of self,
             # it means some items were not blessed into transmuter objects.
             super().clear()
-            super().extend(self.validate_python(value=self.__provided__))
-
+            super().extend(self.validate_python(self.__provided__))
         self.__loaded__ = True
 
         return self
 
-    def __await__(self):
-        # TODO: currently this only supports sqlalchemy's async loading
-        return greenlet_spawn(self._load).__await__()
+    async def _aload(self):
+        # maybe during deepcopy from field default
+        if not self.__instance__:
+            return self
+
+        # or the relationship is already loaded
+        if self.__loaded__:
+            return self
+
+        # A: No provided, None
+        # B: provided value is empty, []
+        if not (provided := await active_materia.get().aload_association(self)):
+            return self
+
+        # TODO: Better way to avoid duplication relationship append ?
+        self.__payloads__ = [
+            payload
+            for payload in self.__payloads__
+            if payload.__transmuter_provided__ not in set(provided)
+        ]
+
+        if not len(provided) == super().__len__():
+            # If the length of __provided__ is not equal to the length of self,
+            # it means some items were not blessed into transmuter objects.
+            super().clear()
+            super().extend(self.validate_python(provided))
+        self.__loaded__ = True
 
     @overload
     def __getitem__(self, index: SupportsIndex) -> T: ...

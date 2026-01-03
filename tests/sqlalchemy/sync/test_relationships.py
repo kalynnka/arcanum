@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import Engine, select
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import joinedload, raiseload, selectinload
 
 from arcanum.association import Relation, RelationCollection
@@ -675,7 +676,7 @@ class TestRaiseOnSQLBehavior:
 
             # Accessing author should raise RuntimeError (Arcanum wraps InvalidRequestError)
             with pytest.raises(
-                RuntimeError, match="loading strategy is set to 'raise'"
+                InvalidRequestError, match="loading strategy is set to 'raise'"
             ):
                 _ = loaded_book.author.value
 
@@ -709,7 +710,7 @@ class TestRaiseOnSQLBehavior:
             # Accessing books collection should raise RuntimeError (Arcanum wraps InvalidRequestError)
             # We need to iterate or access elements to trigger the lazy load
             with pytest.raises(
-                RuntimeError, match="loading strategy is set to 'raise'"
+                InvalidRequestError, match="loading strategy is set to 'raise'"
             ):
                 _ = len(loaded_author.books)
 

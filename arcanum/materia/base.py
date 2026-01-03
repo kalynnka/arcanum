@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
-    Generator,
     Generic,
     Optional,
     Self,
@@ -23,7 +21,6 @@ if TYPE_CHECKING:
 M = TypeVar("M", bound=Any)
 A = TypeVar("A", bound="Association")
 T = TypeVar("T", bound="BaseTransmuter")
-TM = TypeVar("TM", bound="TransmuterMetaclass")
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -77,7 +74,7 @@ class BaseMateria:
         return transmuter in self.formulars
 
     def bless(self, materia: Any):
-        def decorator(transmuter_cls: TM) -> TM:
+        def decorator(transmuter_cls: type[T]) -> type[T]:
             self.formulars[transmuter_cls] = materia
             return transmuter_cls
 
@@ -107,10 +104,11 @@ class BaseMateria:
     ) -> A:
         return association
 
-    @staticmethod
-    @contextmanager
-    def association_load_context(association: Association) -> Generator[None]:
-        yield
+    def load_association(self, association: Association) -> Any:
+        raise NotImplementedError()
+
+    async def aload_association(self, association: Association) -> Any:
+        raise NotImplementedError()
 
 
 class NoOpMateria(BaseMateria):
@@ -127,8 +125,14 @@ class NoOpMateria(BaseMateria):
             super().__init__()
             NoOpMateria._initialized = True
 
+    def load_association(self, association: Association):
+        return
+
+    async def aload_association(self, association: Association) -> Any:
+        return
+
     def bless(self):
-        def decorator(transmuter_cls: TM) -> TM:
+        def decorator(transmuter_cls: type[T]) -> type[T]:
             # No operation performed, just return the class as is
             return transmuter_cls
 
