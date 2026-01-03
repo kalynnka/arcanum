@@ -253,7 +253,7 @@ class TransmuterMetaclass(ModelMetaclass):
         for field_name in set(
             self.__pydantic_fields__.keys()
             - self.model_identities.keys()
-            - set(self.model_associations.keys())  # TODO: include nested associations
+            - set(self.model_associations.keys())
         ):
             info = copy(self.__pydantic_fields__[field_name])
             field_definitions[field_name] = (info.annotation, info)
@@ -353,6 +353,7 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
     def __hash__(self):
         return hash(id(self))
 
+    # TODO: model_construct?
     @model_validator(mode="wrap")
     @classmethod
     def model_formulate(

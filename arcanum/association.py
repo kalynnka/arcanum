@@ -210,7 +210,7 @@ class Relation(Association[Optional_T]):
         # to fobid the folowing example
         # class A(BaseTransmuter):
         #     b: Relation[B] = Relation()
-        # b = B(b=None)  # should raise validation error
+        # a = A(b=None)  # should raise validation error
         return core_schema.union_schema(
             choices=[
                 handler.generate_schema(generic_type),
