@@ -29,6 +29,14 @@ class SqlalchemyMateria(BaseMateria):
                     "SQLAlchemyMateria require materia must implement TransmuterProxied."
                 )
             self.formulars[transmuter_cls] = materia
+
+            # Inject __clause_element__ methods to make transmuter_cls compatible with SQLAlchemy SQL constructions
+            @classmethod
+            def __clause_element__(cls: type[BaseTransmuter]):
+                return inspect(cls.__transmuter_provider__)
+
+            transmuter_cls.__clause_element__ = __clause_element__
+
             return transmuter_cls
 
         return decorator

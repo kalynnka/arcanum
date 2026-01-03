@@ -29,7 +29,6 @@ from pydantic import (
 )
 from pydantic._internal._model_construction import ModelMetaclass, NoInitField
 from pydantic.fields import Field, FieldInfo, PrivateAttr
-from sqlalchemy.inspection import inspect
 
 from arcanum.association import Association
 from arcanum.materia.base import (
@@ -353,10 +352,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
     def __hash__(self):
         return hash(id(self))
-
-    @classmethod
-    def __clause_element__(cls):
-        return inspect(cls.__transmuter_provider__)
 
     @model_validator(mode="wrap")
     @classmethod
