@@ -9,6 +9,7 @@ from typing import (
     Optional,
     Self,
     TypeVar,
+    Union,
 )
 
 from pydantic import ValidationInfo
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 M = TypeVar("M", bound=Any)
 A = TypeVar("A", bound="Association")
 T = TypeVar("T", bound="BaseTransmuter")
+TM = TypeVar("TM", bound=Union["TransmuterMetaclass", type["BaseTransmuter"]])
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -74,7 +76,7 @@ class BaseMateria:
         return transmuter in self.formulars
 
     def bless(self, materia: Any):
-        def decorator(transmuter_cls: type[T]) -> type[T]:
+        def decorator(transmuter_cls: TM) -> TM:
             self.formulars[transmuter_cls] = materia
             return transmuter_cls
 
@@ -132,7 +134,7 @@ class NoOpMateria(BaseMateria):
         return
 
     def bless(self):
-        def decorator(transmuter_cls: type[T]) -> type[T]:
+        def decorator(transmuter_cls: TM) -> TM:
             # No operation performed, just return the class as is
             return transmuter_cls
 

@@ -10,7 +10,7 @@ from sqlalchemy.util import greenlet_spawn
 
 from arcanum.association import Association
 from arcanum.base import BaseTransmuter
-from arcanum.materia.base import BaseMateria, T
+from arcanum.materia.base import TM, BaseMateria
 
 
 class LoadedData: ...
@@ -18,7 +18,7 @@ class LoadedData: ...
 
 class SqlalchemyMateria(BaseMateria):
     def bless(self, materia: type[Any]):
-        def decorator(transmuter_cls: type[T]) -> type[T]:
+        def decorator(transmuter_cls: TM) -> TM:
             if transmuter_cls in self.formulars:
                 raise RuntimeError(
                     f"Transmuter {transmuter_cls.__name__} is already blessed with {self} in {self.__class__.__name__}"
