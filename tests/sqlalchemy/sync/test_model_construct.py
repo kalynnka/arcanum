@@ -269,19 +269,19 @@ class TestModelConstructMixedUsage:
                 assert author.name == "Overridden"
                 assert author.field == "Physics"
 
-    def test_construct_without_provider(self, engine: Engine):
-        """Test normal construction without provider data."""
-        # Should work like normal pydantic model_construct
+    def test_construct_with_provider(self, engine: Engine):
+        """Test normal construction with provider data."""
         author = Author.model_construct(
             id=999,
             name="No Provider",
             field="Literature",
         )
 
-        assert author.id == 999
-        assert author.name == "No Provider"
-        assert author.field == "Literature"
-        assert author.__transmuter_provided__ is None
+        assert author.__transmuter_provided__
+        assert isinstance(author.__transmuter_provided__, models.Author)
+        assert author.id == author.__transmuter_provided__.id == 999
+        assert author.name == author.__transmuter_provided__.name == "No Provider"
+        assert author.field == author.__transmuter_provided__.field == "Literature"
 
 
 class TestModelConstructEdgeCases:

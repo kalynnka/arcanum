@@ -408,6 +408,29 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             inputs.update(values)
             instance = super().model_construct(_fields_set=_fields_set, **inputs)
 
+            if (provider := type(instance).__transmuter_provider__) is not None:
+                model_fields = type(instance).model_fields
+                included = instance.model_dump(
+                    exclude=set(type(instance).model_associations.keys()),
+                    by_alias=True,
+                )
+                excluded = {
+                    model_fields[name].alias or name: getattr(instance, name)
+                    for name in type(instance).model_fields.keys()
+                    - type(instance).model_associations.keys()
+                    if model_fields[name].exclude
+                }
+                provided = provider(**included, **excluded)
+                provided.transmuter_proxy = instance
+                instance.__transmuter_provided__ = provided
+            else:
+                instance.__transmuter_provided__ = None
+
+            for name in type(instance).model_associations:
+                association = getattr(instance, name)
+                if isinstance(association, Association):
+                    association.prepare(instance, name)
+
         return instance  # pyright: ignore[reportReturnType]
 
     @classmethod
