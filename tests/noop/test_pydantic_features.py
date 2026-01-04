@@ -900,6 +900,9 @@ class TestNestedTypeCompatibility:
             field: str
             contact_info: ContactInfo | None = None
 
+        # Rebuild model to resolve locally-defined ContactInfo
+        AuthorWithValidation.model_rebuild()
+
         # Valid email
         author = AuthorWithValidation(
             name="Test",
@@ -1359,8 +1362,9 @@ class TestNestedTypeCompatibility:
             # Nested Contact (BaseModel)
             contact: Contact | None = None
 
-        # Rebuild InnerBook to resolve forward reference to InnerAuthor
+        # Rebuild both models to resolve forward references to each other
         InnerBook.model_rebuild()
+        InnerAuthor.model_rebuild()
 
         # Create deeply nested structure
         author = InnerAuthor(
