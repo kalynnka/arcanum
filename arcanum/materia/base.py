@@ -93,7 +93,15 @@ class BaseMateria:
         return transmuter
 
     @staticmethod
-    def __association_before_validator__(
+    def transmuter_before_construct(transmuter_type: type[T], materia: object) -> dict:
+        return materia.__dict__
+
+    @staticmethod
+    def transmuter_after_construct(transmuter: T) -> T:
+        return transmuter
+
+    @staticmethod
+    def association_before_validator(
         association_type: type[A],
         value: Any,
         info: core_schema.ValidationInfo,
@@ -101,7 +109,7 @@ class BaseMateria:
         return value
 
     @staticmethod
-    def __association_after_validator__(
+    def association_after_validator(
         association: A, info: core_schema.ValidationInfo
     ) -> A:
         return association

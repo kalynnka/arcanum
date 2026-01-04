@@ -101,6 +101,7 @@ class TransmuterMetaclass(ModelMetaclass):
 
     if TYPE_CHECKING:
         __pydantic_fields__: dict[str, FieldInfo]
+        __hash__: Any  # Override to indicate instances are hashable
 
         model_config: ConfigDict
         model_fields: dict[str, FieldInfo]
@@ -350,10 +351,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             if isinstance(association, Association):
                 association.prepare(self, name)
 
-    def __hash__(self):
-        return hash(id(self))
-
-    # TODO: model_construct?
     @model_validator(mode="wrap")
     @classmethod
     def model_formulate(
@@ -375,11 +372,43 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
             if not cached:
                 context[data] = instance
-
         else:
-            # normal initialization
+            # normal validation
             instance = handler(data)
         return instance
+
+    @classmethod
+    def model_construct(
+        cls,
+        _fields_set: Optional[set[str]] = None,
+        *,
+        data: Optional[object] = None,
+        **values: Any,
+    ) -> Self:
+        if cls.__transmuter_provider__ and isinstance(
+            data, cls.__transmuter_provider__
+        ):
+            context = validated.get()
+            cached = context.get(data)
+
+            instance = cached or data.transmuter_proxy
+            if instance is None or instance._revalidating:
+                materia = cls.__transmuter_materia__
+                inputs = materia.transmuter_before_construct(cls, data)
+                inputs.update(values)
+                instance = super().model_construct(_fields_set=_fields_set, **inputs)
+                instance.__transmuter_provided__ = data
+                data.transmuter_proxy = instance
+                instance = materia.transmuter_after_construct(instance)
+
+            if not cached:
+                context[data] = instance
+        else:
+            inputs = data if isinstance(data, dict) else data.__dict__ if data else {}
+            inputs.update(values)
+            instance = super().model_construct(_fields_set=_fields_set, **inputs)
+
+        return instance  # pyright: ignore[reportReturnType]
 
     @classmethod
     def shell(cls, create_partial: BaseModel) -> Self:

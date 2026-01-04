@@ -8,6 +8,7 @@ from typing import (
     Any,
     Callable,
     Concatenate,
+    ForwardRef,
     Generic,
     Iterable,
     Literal,
@@ -71,10 +72,10 @@ class Association(Generic[A], ABC):
         value: Any,
         info: core_schema.ValidationInfo,
     ) -> Any:
-        return active_materia.get().__association_before_validator__(cls, value, info)
+        return active_materia.get().association_before_validator(cls, value, info)
 
     def __pydantic_after_validator__(self, info: core_schema.ValidationInfo) -> Self:
-        return active_materia.get().__association_after_validator__(self, info)
+        return active_materia.get().association_after_validator(self, info)
 
     @classmethod
     def __get_pydantic_generic_schema__(
@@ -191,7 +192,15 @@ class Association(Generic[A], ABC):
         self.field_info = type(instance).model_fields[field_name]
 
         self.__instance__ = instance
-        self.__generic__ = get_args(self.field_info.annotation)[0]
+
+        annotation = self.field_info.annotation
+        if isinstance(annotation, ForwardRef):
+            actual_type = annotation.__forward_value__
+            if actual_type is None:
+                actual_type = annotation._evaluate(globals(), locals(), set())
+            self.__generic__ = get_args(actual_type)[0]
+        else:
+            self.__generic__ = get_args(annotation)[0]
 
     def validate_python(self, value: Any) -> A:
         """Validate the value against the type adapter."""

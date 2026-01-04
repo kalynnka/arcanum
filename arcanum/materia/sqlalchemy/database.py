@@ -302,18 +302,24 @@ class Session(SqlalchemySession):
             **kw,
         ).scalars()
 
-    def expunge(self, instance: BaseTransmuter) -> None:
-        if instance.__transmuter_provided__ in self._validation_context:
-            del self._validation_context[instance.__transmuter_provided__]
-        super().expunge(instance.__transmuter_provided__)
+    def expunge(self, instance: object) -> None:
+        if isinstance(instance, BaseTransmuter):
+            if instance.__transmuter_provided__ in self._validation_context:
+                del self._validation_context[instance.__transmuter_provided__]
+            super().expunge(instance.__transmuter_provided__)
+        else:
+            super().expunge(instance)
 
     def expunge_all(self) -> None:
         self._validation_context.clear()
         return super().expunge_all()
 
-    def add(self, instance: BaseTransmuter, _warn: bool = True) -> None:
-        self._validation_context[instance.__transmuter_provided__] = instance
-        super().add(instance.__transmuter_provided__, _warn=_warn)
+    def add(self, instance: object, _warn: bool = True) -> None:
+        if isinstance(instance, BaseTransmuter):
+            self._validation_context[instance.__transmuter_provided__] = instance
+            super().add(instance.__transmuter_provided__, _warn=_warn)
+        else:
+            super().add(instance, _warn=_warn)
 
     def _save_or_update_state(
         self,
@@ -332,14 +338,17 @@ class Session(SqlalchemySession):
 
     def refresh(
         self,
-        instance: BaseTransmuter,
+        instance: object,
         attribute_names: Iterable[str] | None = None,
         with_for_update: ForUpdateArg | None | bool | dict[str, Any] = None,
     ) -> None:
-        if instance.__transmuter_provided__ not in self._validation_context:
-            self._validation_context[instance.__transmuter_provided__] = instance
-        super().refresh(instance, attribute_names, with_for_update)
-        instance.revalidate()
+        if isinstance(instance, BaseTransmuter):
+            if instance.__transmuter_provided__ not in self._validation_context:
+                self._validation_context[instance.__transmuter_provided__] = instance
+            super().refresh(instance, attribute_names, with_for_update)
+            instance.revalidate()
+        else:
+            super().refresh(instance, attribute_names, with_for_update)
 
     def rollback(self) -> None:
         super().rollback()
@@ -352,33 +361,40 @@ class Session(SqlalchemySession):
         load: bool = True,
         options: Sequence[ORMOption] | None = None,
     ) -> T:
-        if self._warn_on_events:
-            self._flush_warning("Session.merge()")
+        if isinstance(instance, BaseTransmuter):
+            if self._warn_on_events:
+                self._flush_warning("Session.merge()")
 
-        _recursive: dict[InstanceState[Any], object] = {}
-        _resolve_conflict_map: dict[_IdentityKeyType[Any], object] = {}
+            _recursive: dict[InstanceState[Any], object] = {}
+            _resolve_conflict_map: dict[_IdentityKeyType[Any], object] = {}
 
-        if load:
-            # flush current contents if we expect to load data
-            self._autoflush()
+            if load:
+                # flush current contents if we expect to load data
+                self._autoflush()
 
-        object_mapper(instance)  # verify mapped
-        autoflush = self.autoflush
-        try:
-            self.autoflush = False
-            merged = self._merge(
-                attributes.instance_state(instance),
-                attributes.instance_dict(instance.__transmuter_provided__),
+            object_mapper(instance)  # verify mapped
+            autoflush = self.autoflush
+            try:
+                self.autoflush = False
+                merged = self._merge(
+                    attributes.instance_state(instance),
+                    attributes.instance_dict(instance.__transmuter_provided__),
+                    load=load,
+                    options=options,
+                    _recursive=_recursive,
+                    _resolve_conflict_map=_resolve_conflict_map,
+                )
+                instance = type(instance).model_validate(merged)
+                instance.revalidate()
+                return instance
+            finally:
+                self.autoflush = autoflush
+        else:
+            return super().merge(
+                instance,
                 load=load,
                 options=options,
-                _recursive=_recursive,
-                _resolve_conflict_map=_resolve_conflict_map,
             )
-            instance = type(instance).model_validate(merged)
-            instance.revalidate()
-            return instance
-        finally:
-            self.autoflush = autoflush
 
     def enable_relationship_loading(self, obj: BaseTransmuter) -> None:
         super().enable_relationship_loading(obj.__transmuter_provided__)
@@ -506,7 +522,7 @@ class Session(SqlalchemySession):
 
     def one(
         self,
-        entity: type[T],
+        entity: type[_T],
         options: Iterable[ExecutableOption] | None = None,
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
@@ -527,7 +543,7 @@ class Session(SqlalchemySession):
 
     def one_or_none(
         self,
-        entity: type[T],
+        entity: type[_T],
         options: Iterable[ExecutableOption] | None = None,
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
@@ -548,7 +564,7 @@ class Session(SqlalchemySession):
 
     def first(
         self,
-        entity: type[T],
+        entity: type[_T],
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
@@ -572,12 +588,12 @@ class Session(SqlalchemySession):
 
     def bulk(
         self,
-        entity: type[T],
+        entity: type[_T],
         idents: Sequence[_PKIdentityArgument],
         *,
         options: Sequence[ORMOption] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-    ) -> list[T | None]:
+    ) -> list[_T | None]:
         """Bulk version of Session.get. Each element in idents should be
         exactly the same format as Session.get's ident parameter.
 
@@ -624,7 +640,7 @@ class Session(SqlalchemySession):
 
     def count(
         self,
-        entity: type[T],
+        entity: type[_T],
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
@@ -642,7 +658,7 @@ class Session(SqlalchemySession):
 
     def list(
         self,
-        entity: type[T],
+        entity: type[_T],
         limit: int | None = 100,
         offset: int | None = None,
         # cursor: UUID | None = None, # TODO: re-enable cursor pagination when identity solution is clarified
@@ -673,7 +689,7 @@ class Session(SqlalchemySession):
 
     def partitions(
         self,
-        entity: type[T],
+        entity: type[_T],
         limit: int | None = 100,
         offset: int | None = None,
         # cursor: UUID | None = None, # TODO: re-enable cursor pagination when identity solution is clarified
@@ -734,7 +750,7 @@ class AsyncSession(SqlalchemyAsyncSession):
 
     async def one(
         self,
-        entity: type[T],
+        entity: type[_T],
         options: Iterable[ExecutableOption] | None = None,
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
@@ -751,7 +767,7 @@ class AsyncSession(SqlalchemyAsyncSession):
 
     async def one_or_none(
         self,
-        entity: type[T],
+        entity: type[_T],
         options: Iterable[ExecutableOption] | None = None,
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
@@ -768,7 +784,7 @@ class AsyncSession(SqlalchemyAsyncSession):
 
     async def first(
         self,
-        entity: type[T],
+        entity: type[_T],
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,
         options: Iterable[ExecutableOption] | None = None,
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
@@ -787,12 +803,12 @@ class AsyncSession(SqlalchemyAsyncSession):
 
     async def bulk(
         self,
-        entity: type[T],
+        entity: type[_T],
         idents: Sequence[_PKIdentityArgument],
         *,
         options: Sequence[ORMOption] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
-    ) -> list[T | None]:
+    ) -> list[_T | None]:
         return await util.greenlet_spawn(
             self.sync_session.bulk,
             entity,
@@ -803,7 +819,7 @@ class AsyncSession(SqlalchemyAsyncSession):
 
     async def count(
         self,
-        entity: type[T],
+        entity: type[_T],
         expressions: Iterable[_ColumnExpressionArgument[bool]] | None = None,
         execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
         **filters,
@@ -818,7 +834,7 @@ class AsyncSession(SqlalchemyAsyncSession):
 
     async def list(
         self,
-        entity: type[T],
+        entity: type[_T],
         limit: int | None = 100,
         offset: int | None = None,
         order_bys: Iterable[_ColumnExpressionOrStrLabelArgument[Any]] | None = None,

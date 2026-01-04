@@ -5,7 +5,6 @@ from typing import Any
 from pydantic import ValidationInfo
 from sqlalchemy import inspect
 from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
-from sqlalchemy.orm import InstanceState
 from sqlalchemy.util import greenlet_spawn
 
 from arcanum.association import Association
@@ -44,28 +43,56 @@ class SqlalchemyMateria(BaseMateria):
     def transmuter_before_validator(
         self, transmuter_type: type[BaseTransmuter], materia: Any, info: ValidationInfo
     ):
-        inspector: InstanceState = inspect(materia)
-
         # don't use a dict to hold loaded data here
         # to avoid pydantic's handler call this formulate function again and go to the else block
         # use an object instead to keep the behavior same with pydantic's original model_validate
         # with from_attributes=True which will skip the instance __init__.
         loaded = LoadedData()
 
+        # inspector: InstanceState = inspect(materia)
+
         # Get all loaded attributes from sqlalchemy orm instance
-        # relationships/associations are excluded here to avoid circular validation
-        # related objects will be validated when they are visited
+        # relationships/associations are excluded here to:
+        # 1. prevent firing loading procedures to respect lazy loading
+        # 2. avoid circular validation
+        # related objects will be load and validated when they are visited
         data = {}
         for field_name, field_info in transmuter_type.model_fields.items():
             if field_name in transmuter_type.model_associations:
                 continue
             used_name = field_info.alias or field_name
-            if used_name in inspector.attrs:
-                data[used_name] = inspector.attrs[used_name].loaded_value
+
+            # TODO: support defferred columns?
+            # if used_name in inspector.attrs:
+            #     data[used_name] = inspector.attrs[used_name].loaded_value
+            data[used_name] = getattr(materia, used_name)
 
         loaded.__dict__ = data
 
         return loaded
+
+    def transmuter_before_construct(
+        self, transmuter_type: type[BaseTransmuter], materia: Any
+    ):
+        # inspector: InstanceState = inspect(materia)
+
+        # Get all loaded attributes from sqlalchemy orm instance
+        # relationships/associations are excluded here to:
+        # 1. prevent firing loading procedures to respect lazy loading
+        # 2. avoid circular validation
+        # related objects will be load and validated when they are visited
+        data = {}
+        for field_name, field_info in transmuter_type.model_fields.items():
+            if field_name in transmuter_type.model_associations:
+                continue
+            used_name = field_info.alias or field_name
+
+            # TODO: support defferred columns?
+            # if used_name in inspector.attrs:
+            #     data[used_name] = inspector.attrs[used_name].loaded_value
+            data[used_name] = getattr(materia, used_name)
+
+        return data
 
     def load_association(self, association: Association):
         if not association.__instance__:
