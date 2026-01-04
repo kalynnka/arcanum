@@ -57,6 +57,7 @@ from arcanum.base import (
     ValidationContextT,
     validation_context,
 )
+from arcanum.materia.base import active_materia
 from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
 from arcanum.utils import get_cached_adapter
 
@@ -384,7 +385,10 @@ class Session(SqlalchemySession):
                     _recursive=_recursive,
                     _resolve_conflict_map=_resolve_conflict_map,
                 )
-                instance = type(instance).model_validate(merged)
+                if active_materia.get().validate:
+                    instance = type(instance).model_validate(merged)
+                else:
+                    instance = type(instance).model_construct(data=merged)
                 instance.revalidate()
                 return instance
             finally:
@@ -450,7 +454,12 @@ class Session(SqlalchemySession):
                 execution_options=execution_options,
                 bind_arguments=bind_arguments,
             )
-            return entity.model_validate(instance) if instance else None
+            if not instance:
+                return None
+            if active_materia.get().validate:
+                return entity.model_validate(instance)
+            else:
+                return entity.model_construct(data=instance)
         else:
             instance = super().get(
                 entity,

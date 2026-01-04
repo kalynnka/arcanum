@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 from abc import ABC
 from contextvars import ContextVar
-from copy import copy
+from copy import copy as shallow_copy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -256,7 +256,7 @@ class TransmuterMetaclass(ModelMetaclass):
             - self.model_identities.keys()
             - set(self.model_associations.keys())
         ):
-            info = copy(self.__pydantic_fields__[field_name])
+            info = shallow_copy(self.__pydantic_fields__[field_name])
             field_definitions[field_name] = (info.annotation, info)
 
         self.__transmuter_create_model__ = create_model(
@@ -282,7 +282,7 @@ class TransmuterMetaclass(ModelMetaclass):
         ):
             info = self.__pydantic_fields__[field_name]
             if not info.frozen:
-                info = copy(info)
+                info = shallow_copy(info)
                 info.default = None
                 field_definitions[field_name] = (Optional[info.annotation], info)
 

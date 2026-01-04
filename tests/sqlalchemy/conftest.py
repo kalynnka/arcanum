@@ -66,7 +66,7 @@ def setup_database(engine):
 @pytest.fixture(scope="session", autouse=True)
 def materia():
     with sqlalchemy_materia:
-        yield
+        yield sqlalchemy_materia
 
 
 @pytest_asyncio.fixture(scope="session")

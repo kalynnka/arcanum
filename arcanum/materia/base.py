@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar, Token
+from copy import copy as shallow_copy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -55,10 +56,39 @@ class BidirectonDict(dict, Generic[K, V]):
 class BaseMateria:
     formulars: BidirectonDict[TransmuterMetaclass, type[Any]]
     active_tokens: list[Token[BaseMateria]]
+    validate: bool
 
-    def __init__(self) -> None:
+    def __init__(self, *, validate: bool = True) -> None:
         self.formulars = BidirectonDict()
         self.active_tokens = []
+        self.validate = validate
+
+    def __call__(self, *, validate: bool | None = None) -> Self:
+        """Create a shallow copy of the materia with overridden parameters.
+
+        The copy shares the validation context (formulars) with the original instance,
+        but has its own active_tokens and can have overridden settings.
+
+        Args:
+            validate: Override the validate flag for the copy. If None, uses the
+                original instance's validate setting.
+
+        Returns:
+            A shallow copy with overridden parameters.
+
+        Example:
+            materia = SqlalchemyMateria()
+            with materia(validate=False):
+                # Validation is disabled in this context
+                instance = MyModel.model_validate(orm_obj)
+        """
+        copied = shallow_copy(self)
+        copied.active_tokens = []
+
+        if validate is not None:
+            copied.validate = validate
+
+        return copied
 
     def __enter__(self) -> Self:
         token = active_materia.set(self)

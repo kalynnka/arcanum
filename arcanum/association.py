@@ -24,7 +24,7 @@ from typing import (
     overload,
 )
 
-from pydantic import Field, GetCoreSchemaHandler, TypeAdapter
+from pydantic import BaseModel, Field, GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import core_schema
 
 from arcanum.materia.base import active_materia
@@ -178,6 +178,15 @@ class Association(Generic[A], ABC):
     def __await__(self):
         return self._aload().__await__()
 
+    def __construct__(self, value: Any) -> Any:
+        if issubclass(self.__generic__, BaseModel):
+            if hasattr(self.__generic__, "__transmuter_materia__"):
+                return self.__generic__.model_construct(data=value)
+            return self.__generic__.model_construct(
+                **value if isinstance(value, dict) else value.__dict__
+            )
+        return value
+
     def _load(self):
         raise NotImplementedError()
 
@@ -202,9 +211,11 @@ class Association(Generic[A], ABC):
         else:
             self.__generic__ = get_args(annotation)[0]
 
-    def validate_python(self, value: Any) -> A:
-        """Validate the value against the type adapter."""
-        return self.__validator__.validate_python(value)
+    def bless(self, value: Any) -> Any:
+        """Bless the value into the generic type."""
+        if active_materia.get().validate:
+            return self.__validator__.validate_python(value)
+        return self.__construct__(value)
 
 
 class Relation(Association[Optional_T]):
@@ -292,7 +303,7 @@ class Relation(Association[Optional_T]):
             # Already loaded by ORM (e.g., selectinload), no need to set back
             self.__provided__ = self.__payloads__.__transmuter_provided__
         else:
-            self.__payloads__ = self.validate_python(self.__provided__)
+            self.__payloads__ = self.bless(self.__provided__)
 
         self.__loaded__ = True
 
@@ -314,7 +325,7 @@ class Relation(Association[Optional_T]):
             # Already loaded by ORM (e.g., selectinload), no need to set back
             self.__provided__ = self.__payloads__.__transmuter_provided__
         else:
-            self.__payloads__ = self.validate_python(self.__provided__)
+            self.__payloads__ = self.bless(self.__provided__)
 
         self.__loaded__ = True
 
@@ -328,7 +339,7 @@ class Relation(Association[Optional_T]):
     @value.setter
     @ensure_loaded
     def value(self, object: Optional_T):
-        object = self.validate_python(object)
+        object = self.bless(object)
         if object is not None:
             self.__provided__ = object.__transmuter_provided__
         else:
@@ -381,17 +392,28 @@ class RelationCollection(list[T], Association[T]):
         return get_cached_adapter(list[self.__generic__])
 
     @overload
-    def validate_python(self, value: T) -> T: ...
+    def bless(self, value: T) -> T: ...
     @overload
-    def validate_python(self, value: Iterable[Any]) -> list[T]: ...
+    def bless(self, value: Iterable[Any]) -> list[T]: ...
     @overload
-    def validate_python(self, value: Any) -> T: ...
-    def validate_python(self, value: Any | Iterable[Any]) -> T | Iterable[T]:
-        """Validate the value against the type adapter."""
-        origin = get_origin(self.__generic__) or self.__generic__
-        if isinstance(value, Iterable) and not isinstance(value, origin):
-            return self.__list_validator__.validate_python(value)
-        return self.__validator__.validate_python(value)
+    def bless(self, value: Any) -> T: ...
+    def bless(self, value: Any | Iterable[Any]) -> T | Iterable[T]:
+        """Bless the value into the generic type."""
+        validate = active_materia.get().validate
+        is_iterable = isinstance(value, Iterable) and not isinstance(
+            value, get_origin(self.__generic__) or self.__generic__
+        )
+
+        if validate:
+            if is_iterable:
+                return self.__list_validator__.validate_python(value)
+            else:
+                return self.__validator__.validate_python(value)
+        else:
+            if is_iterable:
+                return [self.__construct__(item) for item in value]
+            else:
+                return self.__construct__(value)
 
     def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
@@ -442,7 +464,7 @@ class RelationCollection(list[T], Association[T]):
             # If the length of __provided__ is not equal to the length of self,
             # it means some items were not blessed into transmuter objects.
             super().clear()
-            super().extend(self.validate_python(self.__provided__))
+            super().extend(self.bless(self.__provided__))
         self.__loaded__ = True
 
         return self
@@ -472,7 +494,7 @@ class RelationCollection(list[T], Association[T]):
             # If the length of __provided__ is not equal to the length of self,
             # it means some items were not blessed into transmuter objects.
             super().clear()
-            super().extend(self.validate_python(provided))
+            super().extend(self.bless(provided))
         self.__loaded__ = True
 
     @overload
@@ -506,14 +528,14 @@ class RelationCollection(list[T], Association[T]):
     @ensure_loaded
     def __setitem__(self, key: slice, value: T | Iterable[T]):
         if isinstance(value, Iterable):
-            items = self.validate_python(value)
+            items = self.bless(value)
             if self.__provided__ is not None:
                 self.__provided__[key] = [
                     item.__transmuter_provided__ for item in items
                 ]
             super().__setitem__(key, items)
         else:
-            item = self.validate_python(value)
+            item = self.bless(value)
             if self.__provided__ is not None:
                 self.__provided__[key] = item.__transmuter_provided__
             super().__setitem__(key, item)
@@ -526,7 +548,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def __add__(self, other: Iterable[T]):
-        return self.copy() + self.validate_python(other)
+        return self.copy() + self.bless(other)
 
     @ensure_loaded
     def __iadd__(self, other: Iterable[T]):
@@ -587,7 +609,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def append(self, object: T):
-        object = self.validate_python(object)
+        object = self.bless(object)
         if self.__provided__ is not None:
             self.__provided__.append(
                 object.__transmuter_provided__
@@ -598,7 +620,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def extend(self, iterable: Iterable[T]):
-        iterable = self.validate_python(iterable)
+        iterable = self.bless(iterable)
         if self.__provided__ is not None:
             self.__provided__.extend(
                 (
@@ -632,7 +654,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def insert(self, index: SupportsIndex, object: T):
-        object = self.validate_python(object)
+        object = self.bless(object)
         if self.__provided__ is not None:
             self.__provided__.insert(index, object.__transmuter_provided__)
         super().insert(index, object)
@@ -646,7 +668,7 @@ class RelationCollection(list[T], Association[T]):
 
     @ensure_loaded
     def remove(self, value: T):
-        item: T = self.validate_python(value)
+        item: T = self.bless(value)
         if self.__provided__ is not None:
             self.__provided__.remove(item.__transmuter_provided__)
         super().remove(value)

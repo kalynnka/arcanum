@@ -43,6 +43,9 @@ class SqlalchemyMateria(BaseMateria):
     def transmuter_before_validator(
         self, transmuter_type: type[BaseTransmuter], materia: Any, info: ValidationInfo
     ):
+        if not self.validate:
+            return materia
+
         # don't use a dict to hold loaded data here
         # to avoid pydantic's handler call this formulate function again and go to the else block
         # use an object instead to keep the behavior same with pydantic's original model_validate

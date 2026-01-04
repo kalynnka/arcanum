@@ -10,10 +10,13 @@ This module tests:
 
 from __future__ import annotations
 
-from sqlalchemy import Engine
+from unittest.mock import patch
 
-from arcanum.base import validation_context
-from arcanum.materia.sqlalchemy import Session
+import pytest
+from sqlalchemy import Engine, select
+
+from arcanum.base import BaseTransmuter, validation_context
+from arcanum.materia.sqlalchemy import Session, SqlalchemyMateria
 from tests import models
 from tests.schemas import Author, Book
 
@@ -300,3 +303,90 @@ class TestModelConstructEdgeCases:
 
         assert book.title == "Test"
         assert book.year == 2024
+
+
+class TestModelConstructValidateFlag:
+    """Test that validate=False never uses model_validate when loading from database."""
+
+    def test_blessing_model_with_model_construct(
+        self,
+        engine: Engine,
+        materia: SqlalchemyMateria,
+    ):
+        """Test that with validate=False, Relation.bless() uses model_construct, not model_formulate."""
+        with patch.object(
+            BaseTransmuter, "model_formulate", wraps=BaseTransmuter.model_formulate
+        ) as mock_formulate:
+            with Session(engine) as session:
+                with session.begin():
+                    # Setup: Create database object
+                    orm_author = models.Author(name="Test Author", field="Physics")
+                    orm_publisher = models.Publisher(
+                        name="Test Publisher", country="USA"
+                    )
+                    orm_book = models.Book(
+                        title="Test Book",
+                        year=2024,
+                        author=orm_author,
+                        publisher=orm_publisher,
+                    )
+                    session.add_all([orm_author, orm_publisher, orm_book])
+                    session.flush()
+
+                    # Test with validate=False
+                    with materia(validate=False):
+                        # Construct book from ORM data
+                        book = session.get(Book, orm_book.id)
+
+                        assert book
+                        blessed_author = book.author.value
+                        assert blessed_author.name == "Test Author"
+
+                    # Verify model_formulate was NOT called
+                    assert mock_formulate.call_count == 0, (
+                        f"model_formulate should not be called with validate=False, "
+                        f"but was called {mock_formulate.call_count} times"
+                    )
+
+    @pytest.mark.skip(reason="AdaptorResult could not skip validation so far")
+    def test_blessing_sql_results_with_model_construct(
+        self,
+        engine: Engine,
+        materia: SqlalchemyMateria,
+    ):
+        """Test that with validate=False, Relation.bless() uses model_construct, not model_formulate."""
+        with patch.object(
+            BaseTransmuter, "model_formulate", wraps=BaseTransmuter.model_formulate
+        ) as mock_formulate:
+            with Session(engine) as session:
+                with session.begin():
+                    # Setup: Create database object
+                    orm_author = models.Author(name="Test Author", field="Physics")
+                    orm_publisher = models.Publisher(
+                        name="Test Publisher", country="USA"
+                    )
+                    orm_book = models.Book(
+                        title="Test Book",
+                        year=2024,
+                        author=orm_author,
+                        publisher=orm_publisher,
+                    )
+                    session.add_all([orm_author, orm_publisher, orm_book])
+                    session.flush()
+
+                    # Test with validate=False
+                    with materia(validate=False):
+                        # Construct book from ORM data
+                        book = session.execute(
+                            select(Book).where(Book["id"] == orm_book.id)
+                        ).scalar_one()
+
+                        assert book
+                        blessed_author = book.author.value
+                        assert blessed_author.name == "Test Author"
+
+                    # Verify model_formulate was NOT called
+                    assert mock_formulate.call_count == 0, (
+                        f"model_formulate should not be called with validate=False, "
+                        f"but was called {mock_formulate.call_count} times"
+                    )
