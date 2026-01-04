@@ -27,6 +27,7 @@ from pydantic import (
     create_model,
     model_validator,
 )
+from pydantic._internal._generics import PydanticGenericMetadata
 from pydantic._internal._model_construction import ModelMetaclass, NoInitField
 from pydantic.fields import Field, FieldInfo, PrivateAttr
 
@@ -105,6 +106,29 @@ class TransmuterMetaclass(ModelMetaclass):
 
         model_config: ConfigDict
         model_fields: dict[str, FieldInfo]
+
+    def __new__(
+        mcs,
+        cls_name: str,
+        bases: tuple[type[Any], ...],
+        namespace: dict[str, Any],
+        __pydantic_generic_metadata__: PydanticGenericMetadata | None = None,
+        __pydantic_reset_parent_namespace__: bool = True,
+        _create_model_module: str | None = None,
+        **kwargs: Any,
+    ) -> type:
+        for instance_slot in ("__transmuter_provided__",):
+            namespace.pop(instance_slot, None)
+        return super().__new__(
+            mcs,
+            cls_name,
+            bases,
+            namespace,
+            __pydantic_generic_metadata__,
+            __pydantic_reset_parent_namespace__,
+            _create_model_module,
+            **kwargs,
+        )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -296,8 +320,10 @@ class TransmuterMetaclass(ModelMetaclass):
 
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
-    _revalidating: bool = PrivateAttr(default=False)
     __transmuter_provided__: Optional[TransmuterProxied] = NoInitField(init=False)
+    __slots__ = ("__transmuter_provided__",)
+
+    _revalidating: bool = PrivateAttr(default=False)
 
     def __getattribute__(self, name: str) -> Any:
         value: Any = object.__getattribute__(self, name)
@@ -310,11 +336,11 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         try:
             return super().__getattr__(name)  # pyright: ignore[reportAttributeAccessIssue]
         except AttributeError as e:
-            if self.__transmuter_provided__ and hasattr(
-                self.__transmuter_provided__, name
-            ):
-                return getattr(self.__transmuter_provided__, name)
-            raise e
+            try:
+                provided = object.__getattribute__(self, "__transmuter_provided__")
+                return getattr(provided, name)
+            except AttributeError as inner:
+                raise e from inner
 
     def __setattr__(self, name: str, value: Any):
         super().__setattr__(name, value)
@@ -350,6 +376,15 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             association = getattr(self, name)
             if isinstance(association, Association):
                 association.prepare(self, name)
+
+    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> Self:
+        copied = super().__deepcopy__(memo)
+        object.__setattr__(
+            copied,
+            "__transmuter_provided__",
+            shallow_copy(self.__transmuter_provided__),
+        )
+        return copied
 
     @model_validator(mode="wrap")
     @classmethod
