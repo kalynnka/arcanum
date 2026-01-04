@@ -49,6 +49,7 @@ dev-dependencies = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
+    "pytest-codspeed>=4.2.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
     "asyncpg>=0.30.0",
