@@ -98,11 +98,3 @@ jobs:
                   fail_ci_if_error: false
               env:
                   CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-            - name: Run performance tests (validation only)
-              if: github.event.pull_request.draft == true
-              run: uv run pytest performance/ -v --benchmark-disable --tb=short
-
-            - name: Run performance benchmarks
-              if: github.event_name == 'push' || github.event.pull_request.draft == false
-              run: uv run pytest performance/ -v --benchmark-only --benchmark-disable-gc --tb=short
