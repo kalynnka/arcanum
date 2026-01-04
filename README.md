@@ -1,394 +1,442 @@
 # Arcanum
 
+[![CI](https://github.com/kalynnka/arcanum/actions/workflows/ci.yml/badge.svg)](https://github.com/kalynnka/arcanum/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/kalynnka/arcanum/branch/main/graph/badge.svg)](https://codecov.io/gh/kalynnka/arcanum)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **Arcanum** is a Python library designed to seamlessly bind Pydantic schemas with various datasources, eliminating the need to manually create templates, factories, and utilities repeatedly. It provides a unified interface for working with different data backends while maintaining type safety and validation through Pydantic.
 
 > **⚠️ Warning:** This repository is still a work in progress and is currently at a minimum viable state. Expect bugs, breaking changes, and incomplete features. Use at your own risk!
 
 > **⚠️ Note:** At the moment, SQLAlchemy is the only supported provider and is hardcoded as the default backend.
 
-## Quick Start
+## Features
 
-> **⚠️ Important:** When using the SQLAlchemy provider, you must use `arcanum.database.Session` instead of SQLAlchemy's native `sqlalchemy.orm.Session`. The arcanum Session handles the automatic "blessing" of ORM objects into transmuter schemas. Using SQLAlchemy's Session directly will not perform this conversion automatically.
+- 🔄 **Unified Interface**: Work with different data backends through a consistent API with Pydantic
+- 🛡️ **Type Safety**: Full Pydantic validation and type checking
+- 🔗 **Relationship Management**: Intuitive handling of one-to-one, one-to-many, and many-to-many relationships
+- ⚡ **Async Support**: Native async/await support for SQLAlchemy
+- 🎯 **Multiple Materia**: NoOpMateria for testing, SQLAlchemy Materia for database operations
+- 📦 **Partial Models**: Built-in support for Create/Update operations
 
-### Define Your ORM Models
+## Materia Types
 
-First, define your SQLAlchemy ORM models as usual:
+Arcanum supports different "Materia" backends to handle your data:
 
-```python
-from sqlalchemy import ForeignKey, Integer, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+### NoOpMateria
 
+A no-operation materia that's perfect for testing and development. It allows you to work with Pydantic models without any backend, making it ideal for unit tests and prototyping.
 
-class Base(DeclarativeBase): ...
-
-
-class Foo(Base):
-    __tablename__ = "foo"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(50), nullable=False)
-
-    bars: Mapped[list["Bar"]] = relationship(
-        back_populates="foo", uselist=True, cascade="all, delete-orphan"
-    )
-
-
-class Bar(Base):
-    __tablename__ = "bar"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    data: Mapped[str] = mapped_column(String(50), nullable=False)
-    foo_id: Mapped[int] = mapped_column(
-        ForeignKey(Foo.id, ondelete="CASCADE"),
-        nullable=False,
-    )
-    foo: Mapped[Foo] = relationship(back_populates="bars", uselist=False)
-```
-
-### Define Your Transmuter Schemas
-
-Create Pydantic-based schemas that bind to your ORM models using `BaseTransmuter`:
+> **Note:** NoOpMateria is automatically active by default - no manual blessing required! Simply define your transmuter classes and they'll work without any backend setup.
 
 ```python
-from typing import Annotated, ClassVar, Optional
-
-from pydantic import Field
-from pydantic._internal._model_construction import NoInitField
-
-from arcanum.association import Relation, RelationCollection
 from arcanum.base import BaseTransmuter, Identity
-from models import Bar as BarModel
-from models import Foo as FooModel
+from arcanum.association import Relation, RelationCollection, Relationships
+from pydantic import Field
+from typing import Annotated, Optional
 
-
-class Foo(BaseTransmuter):
-    __provider__: ClassVar[type[FooModel]] = FooModel
-    __provided__: FooModel = NoInitField(init=False)
-
+class Author(BaseTransmuter):
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
     name: str
-    bars: RelationCollection[Bar] = Field(default=RelationCollection())
+    field: str
+    
+    books: RelationCollection[Book] = Relationships()
 
-
-class Bar(BaseTransmuter):
-    __provider__: ClassVar[type[BarModel]] = BarModel
-    __provided__: BarModel = NoInitField(init=False)
-
+class Book(BaseTransmuter):
     id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
-    data: str
-    foo_id: int | None = None
+    title: str
+    year: int
+    author_id: int | None = None
+    
+    author: Relation[Author] = Relationships()
 
-    foo: Relation[Foo] = Field(default=Relation())
+# Use them like regular Pydantic models
+author = Author(id=1, name="Isaac Asimov", field="Science Fiction")
+book = Book(id=1, title="Foundation", year=1951, author=Relation(author))
+
+# Access relationships
+print(book.author.value.name)  # Isaac Asimov
+print(list(author.books))  # [Book(...)]
 ```
 
-### Using Schemas Like ORM Objects
+### SQLAlchemy Materia
 
-Once defined, you can use your transmuter schemas just like ORM objects with SQLAlchemy statements:
+Connect your schemas to SQLAlchemy ORM models for full database functionality, **so you can operate on Pydantic transmuter objects just like ORM objects**, seamlessly gluing together the best of both worlds.
+
+> **⚠️ Important:** You must use `arcanum.database.Session` instead of SQLAlchemy's native `sqlalchemy.orm.Session`. The arcanum Session handles the automatic "blessing" of ORM objects into transmuter schemas.
+
+#### Bridging Pydantic and SQLAlchemy
+
+Traditional Pydantic + SQLAlchemy patterns often involve some friction:
+
+- **Manual conversion**: Validating Pydantic models and then converting them to ORM objects
+- **Object duality**: Juggling both ORM objects and Pydantic objects throughout your codebase
+- **Relationship complexity**: Managing relationships across two separate object systems
+- **Boilerplate code**: Writing conversion utilities and factory functions
+
+**SQLAlchemy Materia aims to reduce this friction** by:
+
+**Work with unified objects** - Your transmuter schemas are backed by ORM objects, reducing the need for manual conversion.
+
+**Bi-directional sync** - Changes to your transmuter reflect in the underlying ORM object and vice versa.
+
+**Relationship handling** - Access relationships through your Pydantic models with lazy loading support handled behind the scenes.
+
+**Combined benefits** - Leverage Pydantic's validation and type checking alongside SQLAlchemy's query capabilities.
+
+**Single interface** - Work with one consistent object interface instead of switching between ORM and Pydantic models.
+
+#### Setup
+
+Define your SQLAlchemy ORM models and link them to transmuter schemas:
 
 ```python
-from sqlalchemy import select, insert, update, delete
-
+from sqlalchemy import ForeignKey, Integer, String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
+from arcanum.base import BaseTransmuter, Identity
+from arcanum.association import Relation, RelationCollection, Relationships
 from arcanum.database import Session
+from pydantic import Field
+from typing import Annotated, Optional
 
-# Create and add objects
-with Session(engine) as session:
-    foo = Foo(name="My Foo")
-    bar = Bar(data="Child Bar", foo=Relation(foo))
-    session.add(bar)
-    session.flush()
+# Define ORM models
+class Base(DeclarativeBase): ...
+
+class AuthorModel(Base):
+    __tablename__ = "authors"
     
-    # Sync server-generated values (like autoincrement IDs) to transmuter
-    # For dialects that support RETURNING (PostgreSQL, SQLite, etc.):
-    foo.revalidate()  # Syncs ORM state to transmuter, no extra query
-    bar.revalidate()
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    field: Mapped[str] = mapped_column(String(50), nullable=False)
     
-    # For dialects without RETURNING support (MySQL 😒):
-    session.refresh(foo)  # Issues additional SELECT statements
-    session.refresh(bar)
+    books: Mapped[list["BookModel"]] = relationship(back_populates="author")
+
+class BookModel(Base):
+    __tablename__ = "books"
     
-    session.commit()
-
-# Query using schemas directly in SQLAlchemy statements
-with Session(engine) as session:
-    # Use schema fields in where clauses with bracket notation
-    stmt = select(Foo).where(Foo["id"] == 1)
-    foo = session.execute(stmt).scalars().one()
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    author_id: Mapped[int] = mapped_column(ForeignKey(AuthorModel.id), nullable=False)
     
-    # Get single objects by primary key
-    foo = session.get_one(Foo, 1)
+    author: Mapped[AuthorModel] = relationship(back_populates="books")
 
-# Insert without returning
-with Session(engine) as session:
-    stmt = insert(Foo).values(name="New Foo")
-    session.execute(stmt)
-    session.commit()
+# Initialize SQLAlchemy Materia and bless your schemas
+sqlalchemy_materia = SqlalchemyMateria()
 
-# Insert with returning
-with Session(engine) as session:
-    stmt = insert(Foo).values(name="New Foo").returning(Foo)
-    result = session.execute(stmt)
-    new_foo = result.scalars().one()
-    session.commit()
+@sqlalchemy_materia.bless(AuthorModel)
+class Author(BaseTransmuter):
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    field: str
+    
+    books: RelationCollection[Book] = Relationships()
 
-# Update without returning
-with Session(engine) as session:
-    stmt = update(Foo).where(Foo["id"] == 1).values(name="Updated Foo")
-    session.execute(stmt)
-    session.commit()
+@sqlalchemy_materia.bless(BookModel)
+class Book(BaseTransmuter):
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    title: str
+    year: int
+    author_id: int | None = None
+    
+    author: Relation[Author] = Relationships()
 
-# Update with returning
-with Session(engine) as session:
-    stmt = (
-        update(Foo)
-        .where(Foo["id"] == 1)
-        .values(name="Updated Foo")
-        .returning(Foo)
-    )
-    result = session.execute(stmt)
-    updated_foo = result.scalars().one()
-    session.commit()
+# Create engine
+engine = create_engine("postgresql://user:password@localhost/dbname")
+Base.metadata.create_all(engine)
+```
 
-# Delete without returning
-with Session(engine) as session:
-    stmt = delete(Foo).where(Foo["id"] == 1)
-    session.execute(stmt)
-    session.commit()
+#### Transmuter-ORM Proxying
 
-# Delete with returning
+All objects retrieved from arcanum Session are transmuter instances, wrapping the origianl ORM objects.
+
+```python
 with Session(engine) as session:
-    stmt = delete(Foo).where(Foo["id"] == 1).returning(Foo)
-    result = session.execute(stmt)
-    deleted_foo = result.scalars().one()
+    author = session.get_one(Author, 1)
+    
+    # This is a transmuter object with Pydantic validation
+    assert isinstance(author, Author)
+    assert isinstance(author, BaseTransmuter)
+    
+    # Access the underlying ORM object via __transmuter_provided__
+    orm_author = author.__transmuter_provided__
+    assert isinstance(orm_author, AuthorModel)
+    
+    # Changes sync bi-directionally
+    author.name = "Arthur C. Clarke"
+    assert orm_author.name == "Arthur C. Clarke"  # Synced to ORM
+    
+    # ORM changes reflect in transmuter after revalidation
+    orm_author.field = "Hard Science Fiction"
+    author.revalidate()  # Sync ORM changes back to transmuter
+    assert author.field == "Hard Science Fiction"
+    
+    # Related objects are also transmuters
+    for book in author.books:
+        assert isinstance(book, Book)
+        assert hasattr(book, '__transmuter_provided__')
+        
     session.commit()
 ```
 
+#### Use Cases
 
+##### Creating and Persisting Objects
 
-### Partial Models for Create/Update Operations
+```python
+# Create objects with relationships
+with Session(engine) as session:
+    author = Author(name="Isaac Asimov", field="Science Fiction")
+    book = Book(title="Foundation", year=1951, author=Relation(author))
+    
+    session.add(book)  # Adding book automatically adds author
+    session.flush()
+    
+    # Sync server-generated values (autoincrement IDs)
+    # PostgreSQL/SQLite with RETURNING support:
+    author.revalidate()  # No extra query
+    book.revalidate()
+    
+    # MySQL without RETURNING:
+    # session.refresh(author)  # Issues SELECT
+    # session.refresh(book)
+    
+    session.commit()
+    print(f"Created book #{book.id}: {book.title}")
+```
 
-Arcanum provides `Create` and `Update` partial model helpers, useful for APIs.
+##### Querying Objects
+
+```python
+with Session(engine) as session:
+    # By primary key
+    author = session.get_one(Author, 1)
+    
+    # Using filters
+    author = session.one(Author, name="Isaac Asimov")
+    
+    # With expressions
+    from sqlalchemy import select
+    stmt = select(Author).where(Author["field"] == "Science Fiction")
+    result = session.execute(stmt)
+    authors = result.scalars().all()
+    
+    # List with pagination
+    books = session.list(Book, limit=10, offset=0, 
+                        order_bys=[Book["year"].desc()])
+```
+
+##### Accessing Relationships
+
+```python
+with Session(engine) as session:
+    author = session.get_one(Author, 1)
+    
+    # Navigate one-to-many
+    for book in author.books:
+        print(f"{book.title} ({book.year})")
+        
+        # Navigate many-to-one (same object reference)
+        assert book.author.value is author
+```
+
+##### Updating Objects
+
+```python
+with Session(engine) as session:
+    # Direct update
+    book = session.get_one(Book, 1)
+    book.title = "Foundation (Revised)"
+    session.commit()
+    
+    # Bulk update with RETURNING
+    from sqlalchemy import update
+    stmt = (
+        update(Book)
+        .where(Book["author_id"] == 1)
+        .values(field="Updated")
+        .returning(Book)
+    )
+    result = session.execute(stmt)
+    updated_books = result.scalars().all()
+    session.commit()
+```
+
+##### Using Partial Models (APIs)
 
 ```python
 # Create partial (excludes identity fields)
-partial = Foo.Create(name="Partial Foo")
-foo = Foo.shell(partial)  # Create a full schema instance
+create_data = Author.Create(name="New Author", field="Physics")
+author = Author.shell(create_data)
+
+with Session(engine) as session:
+    session.add(author)
+    session.commit()
 
 # Update partial (respects frozen fields)
-partial = Foo.Update(name="Updated Name")
-foo = Foo(id=2, name="Initial Name").absorb(partial)
-# foo.name is now "Updated Name", foo.id remains 2
+update_data = Author.Update(field="Quantum Physics")
+author = session.get_one(Author, 1)
+author.absorb(update_data)
+session.commit()
 ```
 
-### Accessing Relationships
-
-Arcanum uses `Relation` and `RelationCollection` to handle relationships between schemas:
+##### Deleting Objects
 
 ```python
 with Session(engine) as session:
-    foo = session.get_one(Foo, 1)
+    # Delete with cascade
+    author = session.get_one(Author, 1)
+    session.delete(author)  # Related books deleted by cascade
+    session.commit()
     
-    # Access one-to-many relationships via RelationCollection
-    for bar in foo.bars:
-        print(bar.data)
-        
-        # Access many-to-one relationship via Relation.value
-        parent_foo = bar.foo.value
-        assert parent_foo is foo  # Same object reference
-```
-
-When creating objects with relationships, you can wrap related objects in `Relation`. 
-It works fine without wrapping, but the wrapper keeps your type checker from complaining 😏:
-
-```python
-with Session(engine) as session:
-    foo = Foo(name="Parent Foo")
-    
-    # With Relation wrapper (recommended for type safety)
-    bar = Bar(data="Child Bar", foo=Relation(foo))
-    
-    # Without wrapper (also works, but type checkers may complain)
-    bar = Bar(data="Child Bar", foo=foo)
-    
-    session.add(bar)
-    session.flush()
+    # Bulk delete with RETURNING
+    from sqlalchemy import delete
+    stmt = delete(Book).where(Book["year"] < 2000).returning(Book)
+    result = session.execute(stmt)
+    deleted_books = result.scalars().all()
     session.commit()
 ```
 
-### Session Helper Methods
+#### Session Helper Methods
 
-The arcanum `Session` provides convenient helper methods for common query patterns:
-
-#### `get` / `get_one`
-
-Retrieve a single object by primary key:
-
+**`get` / `get_one`** - Retrieve by primary key:
 ```python
-with Session(engine) as session:
-    # Returns None if not found
-    foo = session.get(Foo, 1)
-    
-    # Raises NoResultFound if not found
-    foo = session.get_one(Foo, 1)
+author = session.get(Author, 1)  # Returns None if not found
+author = session.get_one(Author, 1)  # Raises if not found
 ```
 
-#### `one` / `one_or_none`
-
-Query for a single result with filters:
-
+**`one` / `one_or_none`** - Single result with filters:
 ```python
-with Session(engine) as session:
-    # Using keyword filters
-    foo = session.one(Foo, name="My Foo")
-    
-    # Using expressions with bracket notation
-    foo = session.one(Foo, expressions=[Foo["name"] == "My Foo"])
-    
-    # Returns None instead of raising if not found
-    foo = session.one_or_none(Foo, name="Maybe Exists")
+author = session.one(Author, name="Isaac Asimov")
+author = session.one_or_none(Author, name="Maybe Exists")
 ```
 
-#### `first`
-
-Get the first result with optional ordering:
-
+**`first`** - First result with ordering:
 ```python
-with Session(engine) as session:
-    foo = session.first(Foo, order_bys=[Foo["name"]])
+author = session.first(Author, order_bys=[Author["name"]])
 ```
 
-#### `list`
-
-Retrieve multiple objects with pagination:
-
+**`list`** - Multiple results with pagination:
 ```python
-with Session(engine) as session:
-    # Get up to 100 items (default limit)
-    foos = session.list(Foo)
-    
-    # With pagination
-    foos = session.list(Foo, limit=10, offset=20)
-    
-    # With filters and ordering
-    foos = session.list(
-        Foo,
-        expressions=[Foo["name"].like("Test%")],
-        order_bys=[Foo["id"].desc()],
-        limit=50
-    )
+authors = session.list(Author, limit=10, offset=20,
+                      expressions=[Author["field"].like("Science%")])
 ```
 
-#### `bulk`
-
-Efficiently retrieve multiple objects by their primary keys:
-
+**`bulk`** - Multiple by IDs:
 ```python
-with Session(engine) as session:
-    # Returns list in same order as idents, with None for missing
-    foos = session.bulk(Foo, [1, 2, 3, 4, 5])
+authors = session.bulk(Author, [1, 2, 3, 4, 5])
 ```
 
-#### `count`
-
-Count matching rows:
-
+**`count`** - Count matching rows:
 ```python
-with Session(engine) as session:
-    total = session.count(Foo)
-    filtered = session.count(Foo, expressions=[Foo["name"].like("Test%")])
+total = session.count(Author)
+filtered = session.count(Author, expressions=[Author["field"] == "Physics"])
 ```
 
-#### `partitions`
-
-Stream large result sets in chunks:
-
+**`partitions`** - Stream large result sets:
 ```python
-with Session(engine) as session:
-    for partition in session.partitions(Foo, size=100):
-        for foo in partition:
-            process(foo)
+for partition in session.partitions(Author, size=100):
+    for author in partition:
+        process(author)
 ```
-
 
 ### Async Support
 
-Arcanum supports asynchronous operations using SQLAlchemy's async engine with any async driver. When working with async code, use `arcanum.database.AsyncSession` instead of the original `sqlalchemy.ext.asyncio.AsyncSession`.
+Arcanum supports asynchronous operations using SQLAlchemy's async engine. Use `arcanum.database.AsyncSession` instead of `sqlalchemy.ext.asyncio.AsyncSession`.
 
-The overall usage is the same as the sync one, except you use `AsyncSession` and await async operations. All query patterns, helper methods, and relationship handling work identically.
+All operations work identically to the sync version - just use `AsyncSession` and await async operations:
 
 ```python
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+from sqlalchemy.ext.asyncio import create_async_engine
 from arcanum.database import AsyncSession
 
-# Create async engine with asyncpg driver
+# Create async engine
 async_engine = create_async_engine(
     "postgresql+asyncpg://user:password@localhost/dbname",
     echo=True
 )
 
-# Use AsyncSession for all operations
+# All operations are awaitable
 async with AsyncSession(async_engine, expire_on_commit=True) as session:
     # Query
-    stmt = select(Foo).where(Foo["id"] == 1)
-    result = await session.execute(stmt)
-    foo = result.scalars().one()
+    author = await session.get_one(Author, 1)
     
-    # Insert
-    new_foo = Foo(name="Async Foo")
-    session.add(new_foo)
+    # Create
+    book = Book(title="Async Book", year=2024, author=Relation(author))
+    session.add(book)
     await session.flush()
     await session.commit()
     
-    # Update
-    stmt = update(Foo).where(Foo["id"] == 1).values(name="Updated").returning(Foo)
-    result = await session.execute(stmt)
-    updated_foo = result.scalars().one()
+    # List with filters
+    books = await session.list(Book, limit=10, 
+                               expressions=[Book["year"] > 2020])
 ```
 
-All helper methods are also available in async form:
+#### Relationship Loading in Async
 
+SQLAlchemy's relationship loading strategies work with arcanum transmuters. The await syntax depends on the loading strategy:
+
+**Lazy loading (select)** - Requires await to trigger the query, otherwise a greenlet issue will be raised:
 ```python
-async with AsyncSession(async_engine, expire_on_commit=True) as session:
-    # Get by primary key
-    foo = await session.get_one(Foo, 1)
+class BookModel(Base):
+    # Default lazy="select" - loads on access
+    author: Mapped[AuthorModel] = relationship(lazy="select", back_populates="books")
+
+async with AsyncSession(async_engine) as session:
+    book = await session.get_one(Book, 1)
     
-    # Query with filters
-    foo = await session.one(Foo, name="My Foo")
-    
-    # List with pagination
-    foos = await session.list(Foo, limit=10, offset=20)
-    
-    # Count
-    total = await session.count(Foo)
+    # Must await for lazy loading - triggers SELECT query
+    parent_author = await book.author  # Returns Author object directly
+    parent_author is book.author.value # standerd usage, no need for await for the second time visit
+    assert isinstance(parent_author, Author)
 ```
 
-#### Lazy Loading Relationships in Async Context
+**Eager loading (selectin/joined)** - Loaded upfront, but keep await syntax for consistency:
+```python
+class BookModel(Base):
+    # Eager loading strategies - data already loaded
+    author: Mapped[AuthorModel] = relationship(lazy="selectin", back_populates="books")
+    # or lazy="joined"
 
-Following SQLAlchemy's behavior, implicit I/O operations like lazy-loading relationships are not allowed in async contexts. You must explicitly await relationship loading before accessing the values.
+async with AsyncSession(async_engine) as session:
+    book = await session.get_one(Book, 1)
+    
+    # No I/O needed (data already loaded), but await still works
+    
+    parent_author = await book.author  # Returns cached data
 
-To load relationships, await the `Relation` or `RelationCollection` object first, then access the value, or set the loading strategy in orm to "selectin" to make everything work.
+    book2 = await session.get_one(Book, 2)
+    # also works without await for selectin/joined strategies
+    # but recommended to keep await syntax consistent across strategies
+    parent_author = book.author.value
+    
+```
+
+**Syntactic sugar for await:**
+- `await relation` (Relation) → Returns the related object directly (equivalent to `relation.value`)
+- `await relation_collection` (RelationCollection) → Returns a shallow list copy of all related objects
 
 ```python
 async with AsyncSession(async_engine) as session:
-    foo = await session.get_one(Foo, 1)
+    author = await session.get_one(Author, 1)
     
-    # For RelationCollection (one-to-many)
-    # Must await to load the collection first
-    await foo.bars  # Load the relationship
-    for bar in foo.bars:  # Now safe to iterate
-        print(bar.data)
+    # RelationCollection: await returns list of related objects
+    books_list = await author.books  # Returns list[Book]
+    for book in books_list:
+        print(book.title)
     
-    # For Relation (many-to-one)
-    # Get a bar instance
-    bar = await session.get_one(Bar, 1)
+    # Can also iterate the collection directly after await
+    await author.books
+    for book in author.books:  # Iterates the collection
+        print(book.title)
     
-    # Await loads the relationship and returns the inner value directly
-    parent_foo = await bar.foo  # Returns Foo object, no need for .value
-    assert parent_foo.id == bar.foo_id
+    # Relation: await returns the related object
+    book = await session.get_one(Book, 1)
+    parent_author = await book.author  # Returns Author, not Relation[Author]
+    assert parent_author.id == book.author_id
 ```
-
-**Syntactic Sugar:**
-- `await bar.foo` directly returns the related `Foo` object (no need to access `.value`)
-- `await foo.bars` returns the loaded `RelationCollection` itself, which you can then iterate over
 
 
 
