@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated
 
 import pytest
 from pydantic import BaseModel, Field, ValidationError, field_validator
+from typing_extensions import NotRequired, TypedDict
 
 from arcanum.association import (
     Relation,
