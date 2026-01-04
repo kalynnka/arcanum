@@ -7,7 +7,7 @@
 
 **Arcanum** is a Python library designed to seamlessly bind Pydantic schemas with various datasources, eliminating the need to manually create templates, factories, and utilities repeatedly. It provides a unified interface for working with different data backends while maintaining type safety and validation through Pydantic.
 
-> **⚠️ Warning:** This repository is still a work in progress and is currently at a minimum viable state. Expect bugs, breaking changes, and incomplete features. Use at your own risk!
+> **⚠️ Warning:** This repository is still a work in progress and is currently at a minimum viable state. Expect bugs, breaking changes, and incomplete features.
 
 > **⚠️ Note:** At the moment, SQLAlchemy is the only supported provider and is hardcoded as the default backend.
 
@@ -22,13 +22,13 @@
 
 ## Materia Types
 
-Arcanum supports different "Materia" backends to handle your data:
+Arcanum supports different "Materia" backends to handle data:
 
 ### NoOpMateria
 
-A no-operation materia that's perfect for testing and development. It allows you to work with Pydantic models without any backend, making it ideal for unit tests and prototyping.
+A no-operation materia that's perfect for testing and development. It allows working with Pydantic models without any backend, making it ideal for unit tests and prototyping.
 
-> **Note:** NoOpMateria is automatically active by default - no manual blessing required! Simply define your transmuter classes and they'll work without any backend setup.
+> **Note:** NoOpMateria is automatically active by default - no manual blessing required! Simply define transmuter classes and they'll work without any backend setup.
 
 ```python
 from arcanum.base import BaseTransmuter, Identity
@@ -62,34 +62,34 @@ print(list(author.books))  # [Book(...)]
 
 ### SQLAlchemy Materia
 
-Connect your schemas to SQLAlchemy ORM models for full database functionality, **so you can operate on Pydantic transmuter objects just like ORM objects**, seamlessly gluing together the best of both worlds.
+Connect schemas to SQLAlchemy ORM models for full database functionality, **enabling operations on Pydantic transmuter objects just like ORM objects**, seamlessly gluing together the best of both worlds.
 
-> **⚠️ Important:** You must use `arcanum.database.Session` instead of SQLAlchemy's native `sqlalchemy.orm.Session`. The arcanum Session handles the automatic "blessing" of ORM objects into transmuter schemas.
+> **⚠️ Important:** Use `arcanum.database.Session` instead of SQLAlchemy's native `sqlalchemy.orm.Session`. The arcanum Session handles the automatic "blessing" of ORM objects into transmuter schemas.
 
 #### Bridging Pydantic and SQLAlchemy
 
 Traditional Pydantic + SQLAlchemy patterns often involve some friction:
 
 - **Manual conversion**: Validating Pydantic models and then converting them to ORM objects
-- **Object duality**: Juggling both ORM objects and Pydantic objects throughout your codebase
+- **Object duality**: Juggling both ORM objects and Pydantic objects throughout the codebase
 - **Relationship complexity**: Managing relationships across two separate object systems
 - **Boilerplate code**: Writing conversion utilities and factory functions
 
 **SQLAlchemy Materia aims to reduce this friction** by:
 
-**Work with unified objects** - Your transmuter schemas are backed by ORM objects, reducing the need for manual conversion.
+**Work with unified objects** - Transmuter schemas are backed by ORM objects, reducing the need for manual conversion.
 
-**Bi-directional sync** - Changes to your transmuter reflect in the underlying ORM object and vice versa.
+**Bi-directional sync** - Changes to transmuter objects reflect in the underlying ORM object and vice versa.
 
-**Relationship handling** - Access relationships through your Pydantic models with lazy loading support handled behind the scenes.
+**Relationship handling** - Relationships can be accessed through Pydantic models with lazy loading support handled behind the scenes.
 
-**Combined benefits** - Leverage Pydantic's validation and type checking alongside SQLAlchemy's query capabilities.
+**Combined benefits** - Pydantic's validation and type checking work alongside SQLAlchemy's query capabilities.
 
-**Single interface** - Work with one consistent object interface instead of switching between ORM and Pydantic models.
+**Single interface** - One consistent object interface instead of switching between ORM and Pydantic models.
 
 #### Setup
 
-Define your SQLAlchemy ORM models and link them to transmuter schemas:
+Define SQLAlchemy ORM models and link them to transmuter schemas:
 
 ```python
 from sqlalchemy import ForeignKey, Integer, String, create_engine
@@ -123,7 +123,7 @@ class BookModel(Base):
     
     author: Mapped[AuthorModel] = relationship(back_populates="books")
 
-# Initialize SQLAlchemy Materia and bless your schemas
+# Initialize SQLAlchemy Materia and bless schemas
 sqlalchemy_materia = SqlalchemyMateria()
 
 @sqlalchemy_materia.bless(AuthorModel)
