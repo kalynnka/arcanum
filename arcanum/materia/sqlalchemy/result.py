@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import operator
 from collections.abc import Callable
+from functools import cached_property
 from typing import (
     Any,
     Iterator,
@@ -33,6 +34,10 @@ from sqlalchemy.engine.result import (
 from sqlalchemy.engine.row import RowMapping
 from sqlalchemy.sql.base import _generative
 
+from arcanum.base import BaseTransmuter
+from arcanum.materia.base import active_materia
+from arcanum.utils import get_cached_adapter
+
 _T = TypeVar("_T", bound=Any)
 _TP = TypeVar("_TP", bound=tuple[Any, ...])
 
@@ -52,8 +57,7 @@ class AdaptedCommon(FilterResult[_R]):
 
 
 class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
-    adapter: TypeAdapter
-    scalar_adapter: TypeAdapter
+    entities: tuple[type[Any], ...]
 
     _real_result: Result[_TP]
     _row_logging_fn: Optional[Callable[[Row[Any]], Row[Any]]] = None
@@ -61,8 +65,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
     def __init__(
         self,
         real_result: Result[_TP],
-        adapter: TypeAdapter,
-        scalar_adapter: TypeAdapter,
+        entities: tuple[type[Any], ...] = (),
     ):
         self._real_result = real_result
 
@@ -71,8 +74,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         self._source_supports_scalars = real_result._source_supports_scalars
         self._post_creational_filter = None
 
-        self.adapter = adapter
-        self.scalar_adapter = scalar_adapter
+        self.entities = entities
 
         # BaseCursorResult pre-generates the "_row_getter".  Use that
         # if available rather than building a second one
@@ -80,6 +82,54 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             self._set_memoized_attribute(
                 "_row_getter", real_result.__dict__["_row_getter"]
             )
+
+    @cached_property
+    def adapter(self) -> TypeAdapter:
+        """Get the adapter for tuple results."""
+        return get_cached_adapter(tuple[*self.entities])
+
+    @cached_property
+    def scalar_adapter(self) -> TypeAdapter:
+        """Get the adapter for scalar results."""
+        return (
+            get_cached_adapter(self.entities[0])
+            if self.entities
+            else TypeAdapter(object)
+        )
+
+    @cached_property
+    def validate(self) -> bool:
+        """Get validate flag from active materia context."""
+        return active_materia.get().validate
+
+    def _adapt(self, row: Any) -> Any:
+        """Adapt a row of results based on the validate flag."""
+        if self.validate:
+            return self.adapter.validate_python(row)
+        else:
+            # Use model_construct for each entity in the row
+            if isinstance(row, tuple):
+                return tuple(
+                    entity.model_construct(data=item)
+                    if isinstance(entity, type) and issubclass(entity, BaseTransmuter)
+                    else item
+                    for entity, item in zip(self.entities, row)
+                )
+            return row
+
+    def _adapt_scalar(self, item: Any) -> Any:
+        """Adapt a scalar result based on the validate flag."""
+        if self.validate:
+            return self.scalar_adapter.validate_python(item)
+        else:
+            entity = self.entities[0] if self.entities else None
+            if (
+                entity
+                and isinstance(entity, type)
+                and issubclass(entity, BaseTransmuter)
+            ):
+                return entity.model_construct(data=item)
+            return item
 
     @property
     def t(self) -> Self:
@@ -112,40 +162,38 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
 
     def __iter__(self) -> Iterator[Row[_TP]]:
         for row in self._iter_impl():
-            yield self.adapter.validate_python(row)
+            yield self._adapt(row)
 
     def __next__(self) -> Row[_TP]:
-        return self.adapter.validate_python(self._next_impl())
+        return self._adapt(self._next_impl())
 
     def partitions(self, size: int | None = None) -> Iterator[tuple[Row[_TP]]]:
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                yield tuple(self.adapter.validate_python(row) for row in partition)
+                yield tuple(self._adapt(row) for row in partition)
             else:
                 break
 
     def fetchall(self) -> tuple[Row[_TP]]:
-        return tuple(self.adapter.validate_python(row) for row in self._allrows())
+        return tuple(self._adapt(row) for row in self._allrows())
 
     def fetchone(self) -> Optional[Row[_TP]]:
         row = self._onerow_getter(self)
         if row is _NO_ROW:
             return None
         else:
-            return self.adapter.validate_python(row)
+            return self._adapt(row)
 
     def fetchmany(self, size: int | None = None) -> tuple[Row[_TP]]:
-        return tuple(
-            self.adapter.validate_python(row) for row in self._manyrow_getter(size)
-        )
+        return tuple(self._adapt(row) for row in self._manyrow_getter(size))
 
     def all(self) -> tuple[Row[_TP]]:
-        return tuple(self.adapter.validate_python(row) for row in self._allrows())
+        return tuple(self._adapt(row) for row in self._allrows())
 
     def first(self) -> Optional[Row[_TP]]:
         return (
-            self.adapter.validate_python(row)
+            self._adapt(row)
             if (
                 row := self._only_one_row(
                     raise_for_second_row=False,
@@ -157,7 +205,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         )
 
     def one(self) -> Row[_TP]:
-        return self.adapter.validate_python(
+        return self._adapt(
             self._only_one_row(
                 raise_for_second_row=True,
                 raise_for_none=True,
@@ -167,7 +215,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
 
     def one_or_none(self) -> Optional[Row[_TP]]:
         return (
-            self.adapter.validate_python(row)
+            self._adapt(row)
             if (
                 row := self._only_one_row(
                     raise_for_second_row=True,
@@ -184,7 +232,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
     @overload
     def scalar(self) -> Any: ...
     def scalar(self) -> Any:
-        return self.scalar_adapter.validate_python(
+        return self._adapt_scalar(
             self._only_one_row(
                 raise_for_second_row=False,
                 raise_for_none=False,
@@ -198,7 +246,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
     @overload
     def scalar_one(self) -> Any: ...
     def scalar_one(self) -> Any:
-        return self.scalar_adapter.validate_python(
+        return self._adapt_scalar(
             self._only_one_row(
                 raise_for_second_row=True,
                 raise_for_none=True,
@@ -214,7 +262,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
 
     def scalar_one_or_none(self) -> Optional[Any]:
         return (
-            self.scalar_adapter.validate_python(row)
+            self._adapt_scalar(row)
             if (
                 row := self._only_one_row(
                     raise_for_second_row=True,
@@ -239,14 +287,13 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         return AdaptedScalarResult(
             self,
             index=index,
-            scalar_adapter=self.scalar_adapter,
+            entities=self.entities,
         )
 
     def freeze(self) -> AdaptedFrozenResult[_TP]:
         return AdaptedFrozenResult(
             self,
-            adapter=self.adapter,
-            scalar_adapter=self.scalar_adapter,
+            entities=self.entities,
         )
 
     def mappings(self) -> AdaptedMappingResult:
@@ -254,7 +301,7 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
 
 
 class AdaptedScalarResult(ScalarResult[_R]):
-    scalar_adapter: TypeAdapter
+    _entities: tuple[type[Any], ...]
 
     __slots__ = ()
 
@@ -265,7 +312,7 @@ class AdaptedScalarResult(ScalarResult[_R]):
         self,
         real_result: AdaptedResult[Any],
         index: _KeyIndexType,
-        scalar_adapter: TypeAdapter,
+        entities: tuple[type[Any], ...] = (),
     ):
         self._unique_filter_state = real_result._unique_filter_state
         self._real_result = real_result
@@ -277,7 +324,35 @@ class AdaptedScalarResult(ScalarResult[_R]):
             self._metadata = real_result._metadata._reduce([index])
             self._post_creational_filter = operator.itemgetter(0)
 
-        self.scalar_adapter = scalar_adapter
+        self._entities = entities
+
+    @cached_property
+    def scalar_adapter(self) -> TypeAdapter:
+        """Get the adapter for scalar results."""
+        return (
+            get_cached_adapter(self._entities[0])
+            if self._entities
+            else TypeAdapter(object)
+        )
+
+    @cached_property
+    def validate(self) -> bool:
+        """Get validate flag from active materia context."""
+        return active_materia.get().validate
+
+    def _adapt_scalar(self, item: Any) -> Any:
+        """Adapt a scalar result based on the validate flag."""
+        if self.validate:
+            return self.scalar_adapter.validate_python(item)
+        else:
+            entity = self._entities[0] if self._entities else None
+            if (
+                entity
+                and isinstance(entity, type)
+                and issubclass(entity, BaseTransmuter)
+            ):
+                return entity.model_construct(data=item)
+            return item
 
     def unique(
         self,
@@ -288,40 +363,33 @@ class AdaptedScalarResult(ScalarResult[_R]):
 
     def __iter__(self) -> Iterator[_R]:
         for row in self._iter_impl():
-            yield self.scalar_adapter.validate_python(row)
+            yield self._adapt_scalar(row)
 
     def __next__(self) -> _R:
-        return self.scalar_adapter.validate_python(self._next_impl())
+        return self._adapt_scalar(self._next_impl())
 
     def partitions(self, size: int | None = None) -> Iterator[tuple[_R]]:
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                yield tuple(
-                    self.scalar_adapter.validate_python(scalar) for scalar in partition
-                )
+                yield tuple(self._adapt_scalar(scalar) for scalar in partition)
             else:
                 break
 
     def fetchall(self) -> tuple[_R]:
-        return tuple(
-            self.scalar_adapter.validate_python(scalar) for scalar in self._allrows()
-        )
+        return tuple(self._adapt_scalar(scalar) for scalar in self._allrows())
 
     def fetchmany(self, size: int | None = None) -> tuple[_R]:
         return tuple(
-            self.scalar_adapter.validate_python(scalar)
-            for scalar in self._manyrow_getter(size)
+            self._adapt_scalar(scalar) for scalar in self._manyrow_getter(size)
         )
 
     def all(self) -> tuple[_R]:
-        return tuple(
-            self.scalar_adapter.validate_python(scalar) for scalar in self._allrows()
-        )
+        return tuple(self._adapt_scalar(scalar) for scalar in self._allrows())
 
     def first(self) -> _R | None:
         return (
-            self.scalar_adapter.validate_python(row)
+            self._adapt_scalar(row)
             if (
                 row := self._only_one_row(
                     raise_for_second_row=False,
@@ -333,7 +401,7 @@ class AdaptedScalarResult(ScalarResult[_R]):
         )
 
     def one(self) -> _R:
-        return self.scalar_adapter.validate_python(
+        return self._adapt_scalar(
             self._only_one_row(
                 raise_for_second_row=True,
                 raise_for_none=True,
@@ -343,7 +411,7 @@ class AdaptedScalarResult(ScalarResult[_R]):
 
     def one_or_none(self) -> _R | None:
         return (
-            self.scalar_adapter.validate_python(row)
+            self._adapt_scalar(row)
             if (
                 row := self._only_one_row(
                     raise_for_second_row=True,
@@ -357,28 +425,55 @@ class AdaptedScalarResult(ScalarResult[_R]):
 
 class AdaptedFrozenResult(FrozenResult[_TP]):
     data: Sequence[Any]
-
-    adapter: TypeAdapter
-    scalar_adapter: TypeAdapter
+    _entities: tuple[type[Any], ...]
 
     def __init__(
         self,
         result: AdaptedResult[_TP],
-        adapter: TypeAdapter,
-        scalar_adapter: TypeAdapter,
+        entities: tuple[type[Any], ...] = (),
     ):
         self.metadata = result._metadata._for_freeze()
         self._source_supports_scalars = result._source_supports_scalars
         self._attributes = result._attributes
-        self.adapter = adapter
-        self.scalar_adapter = scalar_adapter
+        self._entities = entities
 
         if self._source_supports_scalars:
-            self.data = self.scalar_adapter.validate_python(
-                result._real_result._raw_row_iterator()
-            )
+            self.data = self._adapt_scalar(result._real_result._raw_row_iterator())
         else:
             self.data = result.fetchall()
+
+    @cached_property
+    def adapter(self) -> TypeAdapter:
+        """Get the adapter for tuple results."""
+        return get_cached_adapter(tuple[*self._entities])
+
+    @cached_property
+    def scalar_adapter(self) -> TypeAdapter:
+        """Get the adapter for scalar results."""
+        return (
+            get_cached_adapter(self._entities[0])
+            if self._entities
+            else TypeAdapter(object)
+        )
+
+    @cached_property
+    def validate(self) -> bool:
+        """Get validate flag from active materia context."""
+        return active_materia.get().validate
+
+    def _adapt_scalar(self, item: Any) -> Any:
+        """Adapt a scalar result based on the validate flag."""
+        if self.validate:
+            return self.scalar_adapter.validate_python(item)
+        else:
+            entity = self._entities[0] if self._entities else None
+            if (
+                entity
+                and isinstance(entity, type)
+                and issubclass(entity, BaseTransmuter)
+            ):
+                return entity.model_construct(data=item)
+            return item
 
     def rewrite_rows(self) -> Sequence[Sequence[Any]]:
         if self._source_supports_scalars:
@@ -391,9 +486,7 @@ class AdaptedFrozenResult(FrozenResult[_TP]):
         afr.metadata = self.metadata
         afr._attributes = self._attributes
         afr._source_supports_scalars = self._source_supports_scalars
-
-        afr.adapter = self.adapter
-        afr.scalar_adapter = self.scalar_adapter
+        afr._entities = self._entities
 
         if self._source_supports_scalars:
             afr.data = [d[0] for d in tuple_data]
@@ -418,9 +511,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
     _post_creational_filter = operator.attrgetter("_mapping")
 
     _real_result: AdaptedResult[Any]
-
-    adapter: TypeAdapter
-    scalar_adapter: TypeAdapter
+    _entities: tuple[type[Any], ...]
 
     def __init__(self, result: AdaptedResult[Any]):
         self._real_result = result
@@ -429,8 +520,41 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         if result._source_supports_scalars:
             self._metadata = self._metadata._reduce([0])
 
-        self.adapter = result.adapter
-        self.scalar_adapter = result.scalar_adapter
+        self._entities = result.entities
+
+    @cached_property
+    def adapter(self) -> TypeAdapter:
+        """Get the adapter for tuple results."""
+        return get_cached_adapter(tuple[*self._entities])
+
+    @cached_property
+    def scalar_adapter(self) -> TypeAdapter:
+        """Get the adapter for scalar results."""
+        return (
+            get_cached_adapter(self._entities[0])
+            if self._entities
+            else TypeAdapter(object)
+        )
+
+    @cached_property
+    def validate(self) -> bool:
+        """Get validate flag from active materia context."""
+        return active_materia.get().validate
+
+    def _adapt(self, row: Any) -> Any:
+        """Adapt a row of results based on the validate flag."""
+        if self.validate:
+            return self.adapter.validate_python(row)
+        else:
+            # Use model_construct for each entity in the row
+            if isinstance(row, (tuple, list)):
+                return tuple(
+                    entity.model_construct(data=item)
+                    if isinstance(entity, type) and issubclass(entity, BaseTransmuter)
+                    else item
+                    for entity, item in zip(self._entities, row)
+                )
+            return row
 
     @_generative
     def unique(self, strategy: Optional[_UniqueFilterType] = None) -> Self:
@@ -445,7 +569,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
             partition = self._manyrow_getter(self, size)
             if partition:
                 yield tuple(
-                    dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+                    dict(zip(row.keys(), self._adapt(row.values())))
                     for row in partition
                 )
             else:
@@ -456,24 +580,23 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         if row is _NO_ROW:
             return None
         else:
-            return dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            return dict(zip(row.keys(), self._adapt(row.values())))
 
     def fetchmany(self, size: int | None = None) -> Sequence[dict[str, Any]]:
         return tuple(
-            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            dict(zip(row.keys(), self._adapt(row.values())))
             for row in self._manyrow_getter(size)
         )
 
     def fetchall(self) -> Sequence[dict[str, Any]]:
         """A synonym for the :meth:`AdaptedMappingResult.all` method."""
         return tuple(
-            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
-            for row in self._allrows()
+            dict(zip(row.keys(), self._adapt(row.values()))) for row in self._allrows()
         )
 
     def first(self) -> dict[str, Any] | None:
         return (
-            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            dict(zip(row.keys(), self._adapt(row.values())))
             if (
                 row := self._only_one_row(
                     raise_for_second_row=False,
@@ -486,8 +609,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
 
     def all(self) -> Sequence[dict[str, Any]]:
         return tuple(
-            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
-            for row in self._allrows()
+            dict(zip(row.keys(), self._adapt(row.values()))) for row in self._allrows()
         )
 
     def one(self) -> dict[str, Any]:
@@ -496,11 +618,11 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
             raise_for_none=True,
             scalar=False,
         )
-        return dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+        return dict(zip(row.keys(), self._adapt(row.values())))
 
     def one_or_none(self) -> dict[str, Any] | None:
         return (
-            dict(zip(row.keys(), self.adapter.validate_python(row.values())))
+            dict(zip(row.keys(), self._adapt(row.values())))
             if (
                 row := self._only_one_row(
                     raise_for_second_row=True,

@@ -59,7 +59,6 @@ from arcanum.base import (
 )
 from arcanum.materia.base import active_materia
 from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
-from arcanum.utils import get_cached_adapter
 
 T = TypeVar("T", bound=BaseTransmuter)
 
@@ -223,8 +222,7 @@ class Session(SqlalchemySession):
             ):
                 return AdaptedResult(
                     real_result=result,
-                    adapter=get_cached_adapter(tuple[*entities]),
-                    scalar_adapter=get_cached_adapter(entities[0]),
+                    entities=tuple(entities),
                 )  # pyright: ignore[reportReturnType]
 
         return result

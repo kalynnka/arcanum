@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
 from sqlalchemy import Engine, select
 
 from arcanum.base import BaseTransmuter, validation_context
@@ -348,7 +347,6 @@ class TestModelConstructValidateFlag:
                         f"but was called {mock_formulate.call_count} times"
                     )
 
-    @pytest.mark.skip(reason="AdaptorResult could not skip validation so far")
     def test_blessing_sql_results_with_model_construct(
         self,
         engine: Engine,
