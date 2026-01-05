@@ -199,6 +199,7 @@ class TestAsyncResultStreaming:
 
             # Should get only one author despite two books
             assert len(authors) == 1
+            assert isinstance(authors[0], Author)
             assert len(authors[0].books) == 2
 
 
