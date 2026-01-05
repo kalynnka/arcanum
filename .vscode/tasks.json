@@ -52,7 +52,7 @@
             "args": [
                 "-m",
                 "pytest",
-                "benchmark/test_noop_materia.py",
+                "benchmark/noop/",
                 "-v",
                 "--benchmark-enable",
                 "--benchmark-disable-gc",
@@ -74,7 +74,7 @@
             "args": [
                 "-m",
                 "pytest",
-                "benchmark/test_sqlalchemy_materia.py",
+                "benchmark/sqlalchemy/",
                 "-v",
                 "--benchmark-enable",
                 "--benchmark-disable-gc",

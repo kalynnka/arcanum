@@ -131,7 +131,7 @@ jobs:
         uses: CodSpeedHQ/action@v4
         with:
           mode: instrumentation
-          run: uv run pytest benchmark/test_noop_materia.py --codspeed
+          run: uv run pytest benchmark/noop/ --codspeed --benchmark-warmup-iterations=5
 
   benchmarks-sqlalchemy:
     name: Run SQLAlchemy benchmarks (walltime)
@@ -175,4 +175,4 @@ jobs:
         uses: CodSpeedHQ/action@v4
         with:
           mode: walltime
-          run: uv run pytest benchmark/test_sqlalchemy_materia.py --codspeed
+          run: uv run pytest benchmark/sqlalchemy/ --codspeed --benchmark-warmup-iterations=5
