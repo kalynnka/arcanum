@@ -1,8 +1,8 @@
 import pytest
 from pydantic import TypeAdapter
 
+from benchmark.conftest import MockAuthor, MockBook
 from tests import schemas, transmuters
-from tests.benchmark.conftest import MockAuthor, MockBook
 
 
 class TestSimpleValidation:
