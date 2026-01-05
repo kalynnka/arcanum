@@ -6,10 +6,6 @@ on:
         types:
             - completed
     workflow_dispatch:
-    push:
-        branches:
-            - main
-    pull_request:
 
 permissions:
     contents: read
@@ -19,7 +15,9 @@ jobs:
     benchmarks:
         name: Run benchmarks
         runs-on: ubuntu-latest
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+        if: >-
+            github.event_name == 'workflow_dispatch' ||
+            (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
         services:
             postgres:
