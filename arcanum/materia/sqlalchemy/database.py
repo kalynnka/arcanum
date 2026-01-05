@@ -17,6 +17,7 @@ from sqlalchemy import exc, inspect, tuple_, util
 from sqlalchemy.engine.cursor import CursorResult
 from sqlalchemy.engine.interfaces import _CoreAnyExecuteParams, _CoreSingleExecuteParams
 from sqlalchemy.engine.result import Result, ScalarResult
+from sqlalchemy.ext.asyncio import AsyncResult
 from sqlalchemy.ext.asyncio import AsyncSession as SqlalchemyAsyncSession
 from sqlalchemy.orm import (
     InstanceState,
@@ -58,7 +59,11 @@ from arcanum.base import (
     validation_context,
 )
 from arcanum.materia.base import active_materia
-from arcanum.materia.sqlalchemy.result import _T, AdaptedResult
+from arcanum.materia.sqlalchemy.result import (
+    _T,
+    AdaptedResult,
+    AsyncAdaptedResult,
+)
 
 T = TypeVar("T", bound=BaseTransmuter)
 
@@ -754,6 +759,66 @@ class AsyncSession(SqlalchemyAsyncSession):
     @_validation_context_manager.setter
     def _validation_context_manager(self, value: ValidateContextGeneratorT | None):
         self.sync_session._validation_context_manager = value
+
+    @overload
+    async def stream(
+        self,
+        statement: TypedReturnsRows[tuple[_T]],
+        params: _CoreAnyExecuteParams | None = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: _BindArguments | None = None,
+        **kw: Any,
+    ) -> AsyncResult[tuple[_T]]: ...
+
+    @overload
+    async def stream(
+        self,
+        statement: Executable,
+        params: _CoreAnyExecuteParams | None = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: _BindArguments | None = None,
+        **kw: Any,
+    ) -> AsyncResult[Any]: ...
+
+    async def stream(
+        self,
+        statement: Executable,
+        params: _CoreAnyExecuteParams | None = None,
+        *,
+        execution_options: OrmExecuteOptionsParameter = util.EMPTY_DICT,
+        bind_arguments: _BindArguments | None = None,
+        **kw: Any,
+    ) -> AsyncResult[Any]:
+        """Execute a statement and return a streaming
+        :class:`AsyncAdaptedResult` object that adapts rows to transmuter types.
+        """
+        _STREAM_OPTIONS = util.immutabledict({"stream_results": True})
+
+        if execution_options:
+            execution_options = util.immutabledict(execution_options).union(
+                _STREAM_OPTIONS
+            )
+        else:
+            execution_options = _STREAM_OPTIONS
+
+        result = await util.greenlet_spawn(
+            self.sync_session.execute,
+            statement,
+            params=params,
+            execution_options=execution_options,
+            bind_arguments=bind_arguments,
+            **kw,
+        )
+
+        if isinstance(result, AdaptedResult):
+            return AsyncAdaptedResult(
+                result,
+                entities=result.entities,
+            )  # pyright: ignore[reportReturnType]
+
+        return AsyncResult(result)
 
     async def one(
         self,
