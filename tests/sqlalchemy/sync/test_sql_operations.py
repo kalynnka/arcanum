@@ -17,7 +17,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from arcanum.materia.sqlalchemy import Session
 from tests import models
-from tests.schemas import Author, Book, Category, Publisher
+from tests.transmuters import Author, Book, Category, Publisher
 
 
 class TestCRUDOperations:
@@ -502,7 +502,7 @@ class TestLoadingStrategies:
             stmt = (
                 select(Book)
                 .where(Book["id"] == book.id)
-                .options(selectinload(models.Book.categories))
+                .options(selectinload(Book["categories"]))
             )
             loaded_book = session.execute(stmt).scalars().one()
 

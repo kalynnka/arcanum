@@ -23,7 +23,7 @@ from sqlalchemy.orm import raiseload, selectinload
 
 from arcanum.materia.sqlalchemy import AsyncSession
 from tests import models
-from tests.schemas import Author, Book, BookCategory, Category, Publisher
+from tests.transmuters import Author, Book, BookCategory, Category, Publisher
 
 
 class TestAsyncSessionContextManagement:
@@ -248,7 +248,7 @@ class TestAsyncRelationships:
     @pytest.mark.asyncio
     async def test_async_many_to_many_relationship(self, async_engine: AsyncEngine):
         """Test async many-to-many relationship access."""
-        from tests.schemas import Category
+        from tests.transmuters import Category
 
         async with AsyncSession(async_engine) as session:
             # Create book with categories

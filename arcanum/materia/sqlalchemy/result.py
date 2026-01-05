@@ -635,11 +635,6 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         )
 
 
-# =============================================================================
-# Async Adapted Result Classes
-# =============================================================================
-
-
 class AsyncAdaptedCommon(FilterResult[_R]):
     """Base class for async adapted results with common functionality."""
 

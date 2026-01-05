@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from arcanum.association import Relation, RelationCollection
 from arcanum.materia.sqlalchemy import AsyncSession
 from tests.models import Base
-from tests.schemas import (
+from tests.transmuters import (
     Author,
     Book,
     BookDetail,

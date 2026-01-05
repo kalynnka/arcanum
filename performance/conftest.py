@@ -27,7 +27,7 @@ from tests.models import (
     Publisher,
     Review,
 )
-from tests.schemas import sqlalchemy_materia
+from tests.transmuters import sqlalchemy_materia
 
 # Database URL points to the docker-compose postgres service exposed on localhost
 DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"

@@ -27,7 +27,7 @@ from arcanum.association import (
     Relationships,
 )
 from arcanum.base import BaseTransmuter, Identity
-from tests.schemas import Author, Book, Publisher, Review
+from tests.transmuters import Author, Book, Publisher, Review
 
 
 # Regular Pydantic BaseModel for testing nested compatibility

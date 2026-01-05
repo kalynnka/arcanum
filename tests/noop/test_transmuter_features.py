@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from tests.schemas import Author, Book
+from tests.transmuters import Author, Book
 
 """Test transmuter-specific features with NoOpMateria.
 

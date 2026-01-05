@@ -143,5 +143,5 @@ jobs:
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v4
         with:
-          mode: simulation
+          mode: auto
           run: uv run pytest performance/ --codspeed

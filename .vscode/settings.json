@@ -28,8 +28,7 @@
     "ruff.enable": true,
     "ruff.lint.enable": true,
     "python.testing.pytestArgs": [
-        "tests",
-        "performance"
+        "tests"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true

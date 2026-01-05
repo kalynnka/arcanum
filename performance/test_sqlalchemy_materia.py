@@ -72,7 +72,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from arcanum.association import Relation
 from arcanum.materia.sqlalchemy import Session
 from tests import models
-from tests.schemas import (
+from tests.transmuters import (
     Author,
     Book,
     BookDetail,

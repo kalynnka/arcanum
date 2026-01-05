@@ -16,7 +16,7 @@ from sqlalchemy import Engine
 from arcanum.materia.sqlalchemy import Session
 from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
 from tests import models
-from tests.schemas import Author, Book, Publisher
+from tests.transmuters import Author, Book, Publisher
 
 
 class TestTransmuterORMCreation:

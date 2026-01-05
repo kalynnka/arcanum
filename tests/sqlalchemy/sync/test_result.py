@@ -17,7 +17,7 @@ from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import selectinload
 
 from arcanum.materia.sqlalchemy import Session
-from tests.schemas import Author, Book, Category, Publisher
+from tests.transmuters import Author, Book, Category, Publisher
 
 
 class TestResultScalars:
