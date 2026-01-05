@@ -32,7 +32,7 @@ ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanum"
 async def async_engine():
     engine = create_async_engine(
         ASYNC_DB_URL,
-        echo=True,
+        # echo=True,
         future=True,
     )
 
@@ -46,7 +46,7 @@ async def async_engine():
 def engine(async_engine: AsyncEngine):
     sync_engine = create_engine(
         DB_URL,
-        echo=True,
+        # echo=True,
         future=True,
     )
 

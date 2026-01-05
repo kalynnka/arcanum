@@ -660,6 +660,8 @@ class TestReadSingle:
         author_id = self.author_id
 
         def read():
+            # Expunge to avoid identity map caching - ensures fair comparison
+            db_session.expunge_all()
             return db_session.get(models.Author, author_id)
 
         result = benchmark(read)
@@ -672,6 +674,8 @@ class TestReadSingle:
         author_id = self.author_id
 
         def read():
+            # Expunge to avoid identity map caching - ensures fair comparison
+            db_session.expunge_all()
             orm_author = db_session.get(models.Author, author_id)
             return PureAuthorSimple.model_validate(orm_author)
 
@@ -686,6 +690,8 @@ class TestReadSingle:
         session = arcanum_session
 
         def read():
+            # Expunge to avoid identity map caching - ensures fair comparison
+            session.expunge_all()
             return session.get(Author, author_id)
 
         result = benchmark(read)
@@ -699,6 +705,8 @@ class TestReadSingle:
         session = arcanum_session
 
         def read():
+            # Expunge to avoid identity map caching - ensures fair comparison
+            session.expunge_all()
             orm_author = session.get(models.Author, author_id)
             return Author.model_construct(data=orm_author)
 
