@@ -24,13 +24,57 @@
             "problemMatcher": []
         },
         {
-            "label": "Run Benchmarks",
+            "label": "Run All Benchmarks",
             "type": "shell",
             "command": "${workspaceFolder}/.venv/bin/python",
             "args": [
                 "-m",
                 "pytest",
                 "benchmark/",
+                "-v",
+                "--benchmark-enable",
+                "--benchmark-disable-gc",
+                "--benchmark-warmup=on",
+                "--benchmark-warmup-iterations=5",
+                "--benchmark-min-rounds=5"
+            ],
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run NoOp Benchmarks",
+            "type": "shell",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": [
+                "-m",
+                "pytest",
+                "benchmark/test_noop_materia.py",
+                "-v",
+                "--benchmark-enable",
+                "--benchmark-disable-gc",
+                "--benchmark-warmup=on",
+                "--benchmark-warmup-iterations=5",
+                "--benchmark-min-rounds=5"
+            ],
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run SQLAlchemy Benchmarks",
+            "type": "shell",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": [
+                "-m",
+                "pytest",
+                "benchmark/test_sqlalchemy_materia.py",
                 "-v",
                 "--benchmark-enable",
                 "--benchmark-disable-gc",
