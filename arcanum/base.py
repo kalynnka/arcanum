@@ -4,6 +4,7 @@ import contextlib
 from abc import ABC
 from contextvars import ContextVar
 from copy import copy as shallow_copy
+from copy import deepcopy
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -117,7 +118,7 @@ class TransmuterMetaclass(ModelMetaclass):
         _create_model_module: str | None = None,
         **kwargs: Any,
     ) -> type:
-        for instance_slot in ("__transmuter_provided__",):
+        for instance_slot in ("__transmuter_provided__", "__transmuter_revalidating__"):
             namespace.pop(instance_slot, None)
         return super().__new__(
             mcs,
@@ -320,16 +321,10 @@ class TransmuterMetaclass(ModelMetaclass):
 
 
 class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
+    __slots__ = ("__transmuter_provided__", "__transmuter_revalidating__")
+
     __transmuter_provided__: Optional[TransmuterProxied] = NoInitField(init=False)
-    __slots__ = ("__transmuter_provided__",)
-
-    _revalidating: bool = PrivateAttr(default=False)
-
-    def __getattribute__(self, name: str) -> Any:
-        value: Any = object.__getattribute__(self, name)
-        if name in type(self).model_associations and isinstance(value, Association):
-            value.prepare(self, name)
-        return value
+    __transmuter_revalidating__: bool = NoInitField(init=False)
 
     def __getattr__(self, name: str) -> Any:
         # only called when attribute not found in normal places
@@ -351,32 +346,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         ):
             setattr(self.__transmuter_provided__, name, getattr(self, name))
 
-    def __init__(self, **data: Any):
-        super().__init__(**data)
-
-        if (provider := type(self).__transmuter_provider__) is not None:
-            model_fields = type(self).model_fields
-            included = self.model_dump(
-                exclude=set(type(self).model_associations.keys()),
-                by_alias=True,
-            )
-            excluded = {
-                model_fields[name].alias or name: getattr(self, name)
-                for name in type(self).model_fields.keys()
-                - type(self).model_associations.keys()
-                if model_fields[name].exclude
-            }
-            provided = provider(**included, **excluded)
-            provided.transmuter_proxy = self
-            self.__transmuter_provided__ = provided
-        else:
-            self.__transmuter_provided__ = None
-
-        for name in type(self).model_associations:
-            association = getattr(self, name)
-            if isinstance(association, Association):
-                association.prepare(self, name)
-
     def __deepcopy__(self, memo: dict[int, Any] | None = None) -> Self:
         copied = super().__deepcopy__(memo)
         object.__setattr__(
@@ -384,13 +353,37 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             "__transmuter_provided__",
             shallow_copy(self.__transmuter_provided__),
         )
+        object.__setattr__(
+            copied,
+            "__transmuter_revalidating__",
+            deepcopy(self.__transmuter_revalidating__),
+        )
         return copied
+
+    def _prepare_associations(self) -> None:
+        """Prepare all associations for this instance. Actually set self as association owner like descriptors"""
+        for name in type(self).model_associations:
+            association = getattr(self, name)
+            if isinstance(association, Association):
+                association.prepare(self, name)
 
     @model_validator(mode="wrap")
     @classmethod
     def model_formulate(
         cls, data: Any, handler: ModelWrapValidatorHandler[Self], info: ValidationInfo
     ) -> BaseTransmuter:
+        if isinstance(data, cls):
+            return handler(data)
+
+        # Handle NoOpMateria case
+        if isinstance(cls.__transmuter_materia__, NoOpMateria):
+            instance = handler(data)
+            object.__setattr__(instance, "__transmuter_provided__", None)
+            object.__setattr__(instance, "__transmuter_revalidating__", False)
+            instance._prepare_associations()
+            return instance
+
+        # Handle provider with matching data type
         if cls.__transmuter_provider__ and isinstance(
             data, cls.__transmuter_provider__
         ):
@@ -398,18 +391,43 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             cached = context.get(data)
 
             instance = cached or data.transmuter_proxy
-            if instance is None or instance._revalidating:
+            if instance is None or instance.__transmuter_revalidating__:
                 materia = cls.__transmuter_materia__
                 instance = handler(materia.transmuter_before_validator(cls, data, info))
-                instance.__transmuter_provided__ = data
+                object.__setattr__(instance, "__transmuter_provided__", data)
+                object.__setattr__(instance, "__transmuter_revalidating__", False)
                 data.transmuter_proxy = instance
+                instance._prepare_associations()
                 instance = materia.transmuter_after_validator(instance, info)
 
             if not cached:
                 context[data] = instance
+
+            return instance
+
+        # Normal validation
+        instance = handler(data)
+        if (provider := cls.__transmuter_provider__) is not None:
+            model_fields = cls.model_fields
+            included = instance.model_dump(
+                exclude=set(cls.model_associations.keys()),
+                by_alias=True,
+            )
+            excluded = {
+                model_fields[name].alias or name: getattr(instance, name)
+                for name in cls.model_fields.keys() - cls.model_associations.keys()
+                if model_fields[name].exclude
+            }
+            provided = provider(**included, **excluded)
+            provided.transmuter_proxy = instance
+            object.__setattr__(instance, "__transmuter_provided__", provided)
+            object.__setattr__(instance, "__transmuter_revalidating__", False)
         else:
-            # normal validation
-            instance = handler(data)
+            object.__setattr__(instance, "__transmuter_provided__", None)
+            object.__setattr__(instance, "__transmuter_revalidating__", False)
+
+        instance._prepare_associations()
+
         return instance
 
     @classmethod
@@ -420,6 +438,19 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         data: Optional[object] = None,
         **values: Any,
     ) -> Self:
+        # Handle NoOpMateria case
+        if isinstance(cls.__transmuter_materia__, NoOpMateria):
+            inputs = data if isinstance(data, dict) else data.__dict__ if data else {}
+            inputs.update(values)
+
+            instance = super().model_construct(_fields_set=_fields_set, **inputs)
+            object.__setattr__(instance, "__transmuter_provided__", None)
+            object.__setattr__(instance, "__transmuter_revalidating__", False)
+            instance._prepare_associations()
+
+            return instance
+
+        # Handle provider with matching data type
         if cls.__transmuter_provider__ and isinstance(
             data, cls.__transmuter_provider__
         ):
@@ -427,46 +458,49 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
             cached = context.get(data)
 
             instance = cached or data.transmuter_proxy
-            if instance is None or instance._revalidating:
+            if instance is None or instance.__transmuter_revalidating__:
                 materia = cls.__transmuter_materia__
                 inputs = materia.transmuter_before_construct(cls, data)
                 inputs.update(values)
                 instance = super().model_construct(_fields_set=_fields_set, **inputs)
-                instance.__transmuter_provided__ = data
+                object.__setattr__(instance, "__transmuter_provided__", data)
+                object.__setattr__(instance, "__transmuter_revalidating__", False)
                 data.transmuter_proxy = instance
+                instance._prepare_associations()
                 instance = materia.transmuter_after_construct(instance)
 
             if not cached:
                 context[data] = instance
+
+            return instance  # pyright: ignore[reportReturnType]
+
+        # Normal construction
+        inputs = data if isinstance(data, dict) else data.__dict__ if data else {}
+        inputs.update(values)
+        instance = super().model_construct(_fields_set=_fields_set, **inputs)
+
+        if (provider := cls.__transmuter_provider__) is not None:
+            model_fields = cls.model_fields
+            included = instance.model_dump(
+                exclude=set(cls.model_associations.keys()),
+                by_alias=True,
+            )
+            excluded = {
+                model_fields[name].alias or name: getattr(instance, name)
+                for name in cls.model_fields.keys() - cls.model_associations.keys()
+                if model_fields[name].exclude
+            }
+            provided = provider(**included, **excluded)
+            provided.transmuter_proxy = instance
+            object.__setattr__(instance, "__transmuter_provided__", provided)
+            object.__setattr__(instance, "__transmuter_revalidating__", False)
         else:
-            inputs = data if isinstance(data, dict) else data.__dict__ if data else {}
-            inputs.update(values)
-            instance = super().model_construct(_fields_set=_fields_set, **inputs)
+            object.__setattr__(instance, "__transmuter_provided__", None)
+            object.__setattr__(instance, "__transmuter_revalidating__", False)
 
-            if (provider := type(instance).__transmuter_provider__) is not None:
-                model_fields = type(instance).model_fields
-                included = instance.model_dump(
-                    exclude=set(type(instance).model_associations.keys()),
-                    by_alias=True,
-                )
-                excluded = {
-                    model_fields[name].alias or name: getattr(instance, name)
-                    for name in type(instance).model_fields.keys()
-                    - type(instance).model_associations.keys()
-                    if model_fields[name].exclude
-                }
-                provided = provider(**included, **excluded)
-                provided.transmuter_proxy = instance
-                instance.__transmuter_provided__ = provided
-            else:
-                instance.__transmuter_provided__ = None
+        instance._prepare_associations()
 
-            for name in type(instance).model_associations:
-                association = getattr(instance, name)
-                if isinstance(association, Association):
-                    association.prepare(instance, name)
-
-        return instance  # pyright: ignore[reportReturnType]
+        return instance
 
     @classmethod
     def shell(cls, create_partial: BaseModel) -> Self:
@@ -489,10 +523,10 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         """Re-validate the instance against the underlying provider instance."""
         # if True, it means that the revalidation is already in progress and triggered by an upper validation round,
         # so we skip the revalidation here to avoid infinite recursion.
-        if self._revalidating:
+        if self.__transmuter_revalidating__:
             return self
 
-        self._revalidating = True
+        self.__transmuter_revalidating__ = True
         if self.__transmuter_provided__:
             self.__pydantic_validator__.validate_python(
                 self.__transmuter_provided__,
@@ -500,6 +534,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
                 by_alias=True,
             )
         # double ensure the revalidation flag is reset to False
-        self._revalidating = False
+        self.__transmuter_revalidating__ = False
 
         return self
