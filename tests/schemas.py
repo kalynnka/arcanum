@@ -55,6 +55,87 @@ class Author(TestIdMixin, BaseModel):
     books: list[Book] = Field(default_factory=list)
 
 
+class AuthorCreate(BaseModel):
+    """Schema for creating/updating authors (no id field)."""
+
+    name: str
+    field: Literal[
+        "Physics",
+        "Biology",
+        "Chemistry",
+        "Literature",
+        "History",
+        "Quantum Physics",
+        "Astronomy",
+        "Dystopian Fiction",
+        "Astrophysics",
+        "Robotics",
+        "Cybernetics",
+        "Xenobiology",
+        "Quantum Physics",
+        "Science Fiction",
+    ] = Field(alias="write_field")
+
+
+class AuthorFlat(BaseModel):
+    """Flat Author schema without relationships (for benchmarks)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = Field(default=None, frozen=True)
+    name: str
+    field: Literal[
+        "Physics",
+        "Biology",
+        "Chemistry",
+        "Literature",
+        "History",
+        "Quantum Physics",
+        "Astronomy",
+        "Dystopian Fiction",
+        "Astrophysics",
+        "Robotics",
+        "Cybernetics",
+        "Xenobiology",
+        "Quantum Physics",
+        "Science Fiction",
+    ]
+
+
+class PublisherFlat(BaseModel):
+    """Flat Publisher schema without relationships (for benchmarks)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = Field(default=None, frozen=True)
+    name: str
+    country: str
+
+
+class BookFlat(BaseModel):
+    """Flat Book schema with flat nested author/publisher (for benchmarks)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = Field(default=None, frozen=True)
+    title: str
+    year: int
+    author_id: int | None = None
+    publisher_id: int | None = None
+
+    author: AuthorFlat
+    publisher: PublisherFlat
+
+
+class BookCreate(BaseModel):
+    """Schema for creating books with nested author/publisher (for benchmarks)."""
+
+    title: str
+    year: int
+    author: AuthorFlat
+    publisher: PublisherFlat
+
+
 # BookDetail schema (1-1 with Book)
 class BookDetail(TestIdMixin, BaseModel):
     model_config = ConfigDict(from_attributes=True)

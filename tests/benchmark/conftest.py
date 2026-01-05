@@ -1,13 +1,30 @@
+from __future__ import annotations
+
 import random
+from typing import Any, Generator
 
 import pytest
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import sessionmaker
 
-SEED = 42  # For reproducible randomness
+from arcanum.materia.sqlalchemy import Session as ArcanumSession
+from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
+from tests import schemas
+from tests import transmuters as transmuters_module
+from tests.models import Author as AuthorModel
+from tests.models import Base
+from tests.models import Book as BookModel
+from tests.models import Publisher as PublisherModel
+from tests.transmuters import sqlalchemy_materia
+
+SEED = 42
 random.seed(SEED)
+
+DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"
 
 
 @pytest.fixture(scope="session")
-def simple_author_data() -> list[dict]:
+def simple_author_data() -> list[dict[str, Any]]:
     """Generate simple author data without relationships (once per session)."""
     random.seed(SEED)
     fields = [
@@ -43,7 +60,7 @@ def simple_author_data() -> list[dict]:
 
 
 @pytest.fixture(scope="session")
-def nested_book_data() -> list[dict]:
+def nested_book_data() -> list[dict[str, Any]]:
     """Generate book data with one level of nested relationships (once per session)."""
     random.seed(SEED)
     fields = [
@@ -102,7 +119,7 @@ def nested_book_data() -> list[dict]:
 
 
 @pytest.fixture(scope="session")
-def deep_nested_data() -> list[dict]:
+def deep_nested_data() -> list[dict[str, Any]]:
     """
     Generate author data with deeply nested book relationships (once per session).
 
@@ -154,7 +171,6 @@ def deep_nested_data() -> list[dict]:
         num_books = books_per_author + random.randint(-2, 2)
         num_books = max(1, num_books)
 
-        # Author's scalar fields (used for both parent and nested reference)
         author_id = i
         author_name = f"{random.choice(scifi_authors)} {random.randint(100, 999)} {random.choice(['Sr.', 'Jr.', 'PhD', ''])}"
         author_field = random.choice(fields)
@@ -165,7 +181,6 @@ def deep_nested_data() -> list[dict]:
                 "id": i * books_per_author + j,
                 "title": f"The {random.choice(adjectives)} {random.choice(nouns)}",
                 "year": random.randint(1995, 2024),
-                # Book's author contains only scalar fields (no books) to break circular reference
                 "author": {
                     "id": author_id,
                     "name": author_name,
@@ -179,7 +194,6 @@ def deep_nested_data() -> list[dict]:
             }
             books.append(book_dict)
 
-        # Parent author has books array
         author_dict = {
             "id": author_id,
             "name": author_name,
@@ -191,7 +205,7 @@ def deep_nested_data() -> list[dict]:
 
 
 @pytest.fixture(scope="session")
-def circular_data() -> list[dict]:
+def circular_data() -> list[dict[str, Any]]:
     """
     Generate company data with true circular references (Company -> Dept -> Employee -> back).
 
@@ -213,8 +227,7 @@ def circular_data() -> list[dict]:
     for c in range(company_count):
         num_depts = random.randint(2, 4)
 
-        # Create company dict first (without departments to allow circular reference)
-        company_dict: dict = {
+        company_dict: dict[str, Any] = {
             "id": c,
             "name": f"Company {random.randint(100, 999)}",
             "industry": random.choice(industries),
@@ -226,12 +239,10 @@ def circular_data() -> list[dict]:
         for d in range(num_depts):
             num_employees = random.randint(3, 6)
 
-            # Create department dict (without employees first)
-            dept_dict: dict = {
+            dept_dict: dict[str, Any] = {
                 "id": c * 10 + d,
                 "name": f"{random.choice(dept_names)} {random.randint(1, 99)}",
                 "budget": random.randint(100000, 5000000),
-                # Circular reference: department -> company
                 "company": company_dict,
             }
 
@@ -242,21 +253,17 @@ def circular_data() -> list[dict]:
                     "name": f"Employee {random.randint(100, 999)}",
                     "title": random.choice(titles),
                     "salary": random.randint(50000, 200000),
-                    # Circular references: employee -> department -> company
                     "department": dept_dict,
                     "company": company_dict,
                 }
                 employees.append(employee_dict)
 
-            # Complete department's employees reference
             dept_dict["employees"] = employees
             all_employees.extend(employees)
             departments.append(dept_dict)
 
-        # Complete company's circular references
         company_dict["departments"] = departments
         company_dict["employees"] = all_employees
-        # Pick a CEO from employees (circular: company.ceo is an employee who references the company)
         company_dict["ceo"] = random.choice(all_employees) if all_employees else None
 
         companies.append(company_dict)
@@ -264,19 +271,19 @@ def circular_data() -> list[dict]:
 
 
 @pytest.fixture(scope="session")
-def simple_author_models(simple_author_data: list[dict]) -> list:
+def simple_author_models(
+    simple_author_data: list[dict[str, Any]],
+) -> list[schemas.Author]:
     """Pre-validated Pydantic author models."""
-    from tests import schemas
-
     return [schemas.Author.model_validate(d) for d in simple_author_data]
 
 
 @pytest.fixture(scope="session")
-def simple_author_transmuters(simple_author_data: list[dict]) -> list:
+def simple_author_transmuters(
+    simple_author_data: list[dict[str, Any]],
+) -> list[transmuters_module.Author]:
     """Pre-validated NoOp author transmuters."""
-    from tests import transmuters
-
-    return [transmuters.Author.model_validate(d) for d in simple_author_data]
+    return [transmuters_module.Author.model_validate(d) for d in simple_author_data]
 
 
 class MockAuthor:
@@ -377,3 +384,235 @@ def mock_nested_book_objects() -> list[MockBook]:
         )
         books.append(book)
     return books
+
+
+@pytest.fixture(scope="session")
+def engine() -> Generator[Engine, None, None]:
+    """Create a database engine for benchmark tests."""
+    sync_engine = create_engine(
+        DB_URL,
+        echo=False,
+        future=True,
+        pool_size=10,
+        max_overflow=20,
+    )
+
+    try:
+        yield sync_engine
+    finally:
+        sync_engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_database(engine: Engine) -> None:
+    """Set up the database schema."""
+    with engine.begin() as conn:
+        Base.metadata.drop_all(conn)
+        Base.metadata.create_all(conn)
+
+
+@pytest.fixture(scope="session")
+def session_factory(engine: Engine) -> sessionmaker:
+    """Create a session factory."""
+    return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+@pytest.fixture(scope="session")
+def arcanum_session_factory(engine: Engine) -> sessionmaker:
+    """Create an arcanum session factory."""
+    return sessionmaker(bind=engine, expire_on_commit=False, class_=ArcanumSession)
+
+
+@pytest.fixture
+def materia() -> Generator[SqlalchemyMateria, None, None]:
+    """Activate sqlalchemy_materia for tests that need it."""
+    with sqlalchemy_materia:
+        yield sqlalchemy_materia
+
+
+@pytest.fixture(scope="session")
+def seeded_authors(
+    session_factory: sessionmaker,
+) -> Generator[list[AuthorModel], None, None]:
+    """
+    Pre-seed the database with authors for read/update/delete benchmarks.
+
+    Creates 100 authors with reproducible data for consistent benchmarks.
+    This fixture is session-scoped - data persists across all tests.
+    """
+    random.seed(SEED)
+    session = session_factory()
+
+    fields = [
+        "Astrophysics",
+        "Robotics",
+        "Cybernetics",
+        "Xenobiology",
+        "Quantum Physics",
+        "Science Fiction",
+    ]
+    names = [
+        "Isaac Asimov",
+        "Arthur C. Clarke",
+        "Ursula K. Le Guin",
+        "Robert A. Heinlein",
+        "Frank Herbert",
+        "William Gibson",
+    ]
+
+    authors = []
+    for _ in range(100):
+        author = AuthorModel(
+            name=f"{random.choice(names)} {random.randint(100, 999)}",
+            field=random.choice(fields),
+        )
+        session.add(author)
+        authors.append(author)
+
+    session.commit()
+
+    for author in authors:
+        session.refresh(author)
+
+    yield authors
+
+    session.close()
+
+
+@pytest.fixture(scope="session")
+def seeded_books(
+    session_factory: sessionmaker,
+    seeded_authors: list[AuthorModel],
+) -> Generator[list[BookModel], None, None]:
+    """
+    Pre-seed the database with books (with relationships) for read benchmarks.
+
+    Creates 100 books linked to authors and publishers.
+    """
+    random.seed(SEED + 1)
+    session = session_factory()
+
+    countries = ["USA", "UK", "Germany", "France", "Japan", "Canada"]
+    adjectives = [
+        "Galactic",
+        "Neon",
+        "Stellar",
+        "Interstellar",
+        "Synthetic",
+        "Cybernetic",
+    ]
+    nouns = ["Odyssey", "Chronicles", "Protocol", "Singularity", "Nexus", "Expedition"]
+
+    publishers = []
+    for i in range(10):
+        publisher = PublisherModel(
+            name=f"Publisher {random.choice(['House', 'Press', 'Books'])} {i}",
+            country=random.choice(countries),
+        )
+        session.add(publisher)
+        publishers.append(publisher)
+
+    session.flush()
+
+    books = []
+    for i in range(100):
+        author = seeded_authors[i % len(seeded_authors)]
+        publisher = publishers[i % len(publishers)]
+
+        book = BookModel(
+            title=f"The {random.choice(adjectives)} {random.choice(nouns)} {random.randint(1, 99)}",
+            year=random.randint(1990, 2024),
+            author_id=author.id,
+            publisher_id=publisher.id,
+        )
+        session.add(book)
+        books.append(book)
+
+    session.commit()
+
+    for book in books:
+        session.refresh(book)
+
+    yield books
+
+    session.close()
+
+
+@pytest.fixture(scope="session")
+def create_author_data() -> list[dict[str, Any]]:
+    """Generate author data for create benchmarks."""
+    random.seed(SEED + 3)
+
+    fields = [
+        "Astrophysics",
+        "Robotics",
+        "Cybernetics",
+        "Xenobiology",
+        "Quantum Physics",
+        "Science Fiction",
+    ]
+    names = [
+        "Isaac Asimov",
+        "Arthur C. Clarke",
+        "Ursula K. Le Guin",
+        "Robert A. Heinlein",
+        "Frank Herbert",
+        "William Gibson",
+    ]
+
+    return [
+        {
+            "name": f"{random.choice(names)} {random.randint(100, 999)}",
+            "write_field": random.choice(fields),
+        }
+        for _ in range(50)
+    ]
+
+
+@pytest.fixture(scope="session")
+def create_nested_book_data() -> list[dict[str, Any]]:
+    """Generate book data with nested author and publisher for create benchmarks."""
+    random.seed(SEED + 4)
+
+    fields = [
+        "Astrophysics",
+        "Robotics",
+        "Cybernetics",
+        "Xenobiology",
+        "Quantum Physics",
+        "Science Fiction",
+    ]
+    countries = ["USA", "UK", "Germany", "France", "Japan", "Canada"]
+    adjectives = [
+        "Galactic",
+        "Neon",
+        "Stellar",
+        "Interstellar",
+        "Synthetic",
+        "Cybernetic",
+    ]
+    nouns = ["Odyssey", "Chronicles", "Protocol", "Singularity", "Nexus", "Expedition"]
+    names = [
+        "Isaac Asimov",
+        "Arthur C. Clarke",
+        "Ursula K. Le Guin",
+        "Robert A. Heinlein",
+        "Frank Herbert",
+        "William Gibson",
+    ]
+
+    return [
+        {
+            "title": f"The {random.choice(adjectives)} {random.choice(nouns)} {random.randint(1, 99)}",
+            "year": random.randint(1990, 2024),
+            "author": {
+                "name": f"{random.choice(names)} {random.randint(100, 999)}",
+                "field": random.choice(fields),
+            },
+            "publisher": {
+                "name": f"Publisher {random.choice(['House', 'Press', 'Books'])} {random.randint(1, 50)}",
+                "country": random.choice(countries),
+            },
+        }
+        for _ in range(50)
+    ]
