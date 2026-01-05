@@ -135,7 +135,9 @@ jobs:
           cache-dependency-glob: "pyproject.toml"
 
       - name: Set up Python
-        run: uv python install 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Install dependencies
         run: uv sync --dev
@@ -143,5 +145,4 @@ jobs:
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v4
         with:
-          mode: auto
-          run: uv run pytest performance/ --codspeed
+          run: uv run pytest benchmark/ --codspeed

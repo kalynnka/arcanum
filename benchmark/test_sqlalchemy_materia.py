@@ -16,7 +16,9 @@ for CRUD API endpoints. Comparing three approaches:
    - Validates and produces ORM-integrated objects in one step
 
 Each test uses transactions that rollback to avoid polluting test data.
-Run with: pytest tests/benchmark/test_sqlalchemy_materia.py -v --benchmark-only
+
+Run locally:  pytest benchmark/ -v --benchmark-enable
+With CodSpeed: pytest benchmark/ --codspeed
 """
 
 from __future__ import annotations
@@ -25,10 +27,13 @@ import random
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from tests import models, schemas
 from tests.transmuters import Author, Book
+
+# Batch size for benchmark tests
+BATCH_SIZE = 50
 
 
 class TestCreateSingleAuthor:
@@ -229,36 +234,50 @@ class TestReadManyAuthors:
     Benchmark reading multiple authors with list query.
 
     Simulates: GET /api/authors?limit=50
-    Each iteration fetches a batch of 50 authors.
+    Each iteration fetches 50 authors.
     """
 
     @pytest.mark.benchmark(group="read-many-authors")
     def test_pure_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pure SQLAlchemy: Query list of authors."""
 
         def read():
             with session_factory() as session:
-                stmt = select(models.Author).limit(50)
+                stmt = (
+                    select(models.Author)
+                    .options(selectinload(models.Author.books))
+                    .limit(BATCH_SIZE)
+                )
                 result = session.scalars(stmt).all()
-                assert len(result) == 50
+                assert len(result) == BATCH_SIZE
 
         benchmark(read)
 
     @pytest.mark.benchmark(group="read-many-authors")
     def test_pydantic_then_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pydantic + SQLAlchemy: Query then validate list for response."""
 
         def read():
             with session_factory() as session:
-                stmt = select(models.Author).limit(50)
+                stmt = (
+                    select(models.Author)
+                    .options(selectinload(models.Author.books))
+                    .limit(BATCH_SIZE)
+                )
                 orm_authors = session.scalars(stmt).all()
                 # Convert to Pydantic for API response
                 validated = [schemas.AuthorFlat.model_validate(a) for a in orm_authors]
-                assert len(validated) == 50
+                assert len(validated) == BATCH_SIZE
 
         benchmark(read)
 
@@ -274,9 +293,13 @@ class TestReadManyAuthors:
 
         def read():
             with arcanum_session_factory() as session:
-                stmt = select(Author).limit(50)
+                stmt = (
+                    select(Author)
+                    .options(selectinload(Author["books"]))
+                    .limit(BATCH_SIZE)
+                )
                 result = session.scalars(stmt).all()
-                assert len(result) == 50
+                assert len(result) == BATCH_SIZE
 
         benchmark(read)
 
@@ -449,15 +472,18 @@ class TestUpdateManyAuthors:
     Benchmark bulk update of multiple authors.
 
     Simulates: Batch update endpoint
-    Each iteration updates 50 authors in a batch.
+    Each iteration updates 50 authors.
     """
 
     @pytest.mark.benchmark(group="update-many-authors")
     def test_pure_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pure SQLAlchemy: Bulk update via query."""
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def update():
             with session_factory() as session:
@@ -473,10 +499,13 @@ class TestUpdateManyAuthors:
 
     @pytest.mark.benchmark(group="update-many-authors")
     def test_pydantic_then_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pydantic + SQLAlchemy: Validate each update then apply."""
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def update():
             with session_factory() as session:
@@ -506,7 +535,7 @@ class TestUpdateManyAuthors:
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Bulk update via transmuters."""
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         AuthorUpdate = Author.Update
 
         def update():
@@ -530,15 +559,18 @@ class TestSerializeToDict:
     Benchmark serializing ORM/transmuter to dict for API response.
 
     Simulates: Converting query result to JSON response
-    Each iteration serializes a batch of 50 authors.
+    Each iteration serializes 50 authors.
     """
 
     @pytest.mark.benchmark(group="serialize-dict")
     def test_pure_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pure SQLAlchemy: Manual dict conversion."""
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
             with session_factory() as session:
@@ -547,14 +579,17 @@ class TestSerializeToDict:
                 return [{"id": a.id, "name": a.name, "field": a.field} for a in authors]
 
         result = benchmark(serialize)
-        assert len(result) == 50
+        assert len(result) == BATCH_SIZE
 
     @pytest.mark.benchmark(group="serialize-dict")
     def test_pydantic_then_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pydantic + SQLAlchemy: Validate then model_dump."""
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
             with session_factory() as session:
@@ -564,7 +599,7 @@ class TestSerializeToDict:
                 return [v.model_dump() for v in validated]
 
         result = benchmark(serialize)
-        assert len(result) == 50
+        assert len(result) == BATCH_SIZE
 
     @pytest.mark.benchmark(group="serialize-dict")
     def test_arcanum_transmuter(
@@ -575,7 +610,7 @@ class TestSerializeToDict:
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Transmuter model_dump."""
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
             with arcanum_session_factory() as session:
@@ -584,7 +619,7 @@ class TestSerializeToDict:
                 return [a.model_dump(exclude={"books", "test_id"}) for a in authors]
 
         result = benchmark(serialize)
-        assert len(result) == 50
+        assert len(result) == BATCH_SIZE
 
 
 class TestSerializeToJson:
@@ -592,17 +627,20 @@ class TestSerializeToJson:
     Benchmark serializing ORM/transmuter to JSON string for API response.
 
     Simulates: Direct JSON response generation
-    Each iteration serializes a batch of 50 authors to JSON.
+    Each iteration serializes 50 authors to JSON.
     """
 
     @pytest.mark.benchmark(group="serialize-json")
     def test_pure_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pure SQLAlchemy: Manual JSON conversion via json module."""
         import json
 
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
             with session_factory() as session:
@@ -616,12 +654,15 @@ class TestSerializeToJson:
 
     @pytest.mark.benchmark(group="serialize-json")
     def test_pydantic_then_sqlalchemy(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
+        self,
+        benchmark,
+        session_factory,
+        seeded_authors: list[models.Author],
     ):
         """Pydantic + SQLAlchemy: Validate then model_dump_json."""
         from pydantic import TypeAdapter
 
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         adapter = TypeAdapter(list[schemas.AuthorFlat])
 
         def serialize():
@@ -645,14 +686,16 @@ class TestSerializeToJson:
         """Arcanum: Transmuter model_dump_json."""
         from pydantic import TypeAdapter
 
-        author_ids = [a.id for a in seeded_authors[:50]]
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         adapter = TypeAdapter(list[Author])
 
         def serialize():
             with arcanum_session_factory() as session:
                 stmt = select(Author).where(Author["id"].in_(author_ids))
                 authors = session.scalars(stmt).all()
-                return adapter.dump_json(authors, exclude={"books", "test_id"})
+                return adapter.dump_json(
+                    authors, exclude={"__all__": {"books", "test_id"}}
+                )
 
         result = benchmark(serialize)
         assert len(result) > 0

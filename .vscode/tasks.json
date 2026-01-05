@@ -24,17 +24,37 @@
             "problemMatcher": []
         },
         {
-            "label": "Run Performance Tests (No GC)",
+            "label": "Run Benchmarks",
             "type": "shell",
             "command": "${workspaceFolder}/.venv/bin/python",
             "args": [
-                "-X",
-                "dev",
                 "-m",
                 "pytest",
-                "performance/",
+                "benchmark/",
                 "-v",
-                "--benchmark-disable-gc"
+                "--benchmark-enable",
+                "--benchmark-disable-gc",
+                "--benchmark-warmup=on",
+                "--benchmark-warmup-iterations=5",
+                "--benchmark-min-rounds=5"
+            ],
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Benchmarks (CodSpeed)",
+            "type": "shell",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": [
+                "-m",
+                "pytest",
+                "benchmark/",
+                "-v",
+                "--codspeed"
             ],
             "group": "test",
             "presentation": {
