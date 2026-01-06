@@ -26,7 +26,9 @@ from tests.transmuters import (
 # Use SQLite in-memory for tests - avoids external database dependency
 # Using shared cache mode to allow multiple connections to same in-memory database
 DB_URL = "sqlite:///:memory:?cache=shared"
+DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"  # For local testing with Postgres
 ASYNC_DB_URL = "sqlite+aiosqlite:///:memory:?cache=shared"
+ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanum"  # For local testing with Postgres
 
 
 @pytest_asyncio.fixture(scope="session")
