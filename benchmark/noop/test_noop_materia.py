@@ -201,6 +201,78 @@ class TestDeepNestedValidation:
         assert len(result[0].books) >= 1
 
 
+class TestScalarsOnlyDumpDict:
+    """
+    Compare model_dump() for scalar-only models (no relationships).
+
+    Uses flat models without any association fields to get pure dump performance.
+    """
+
+    @pytest.mark.baseline
+    @pytest.mark.benchmark(group="scalars-only-dump-dict")
+    def test_pydantic_scalars_dump_dict(
+        self, benchmark, simple_author_flat_models: list[schemas.AuthorFlat]
+    ):
+        """Pure Pydantic: model_dump to dict (flat model)."""
+        models = simple_author_flat_models
+
+        def dump_all():
+            return [m.model_dump() for m in models]
+
+        result = benchmark(dump_all)
+        assert len(result) == 100
+        assert "name" in result[0]
+        assert "books" not in result[0]
+
+    @pytest.mark.benchmark(group="scalars-only-dump-dict")
+    def test_transmuter_scalars_dump_dict(
+        self, benchmark, simple_author_flat_transmuters: list[transmuters.AuthorFlat]
+    ):
+        """Arcanum: model_dump to dict (flat transmuter)."""
+        models = simple_author_flat_transmuters
+
+        def dump_all():
+            return [m.model_dump() for m in models]
+
+        result = benchmark(dump_all)
+        assert len(result) == 100
+        assert "name" in result[0]
+        assert "books" not in result[0]
+
+
+class TestScalarsOnlyDumpJson:
+    """
+    Compare model_dump_json() for scalar-only models (no relationships).
+    """
+
+    @pytest.mark.baseline
+    @pytest.mark.benchmark(group="scalars-only-dump-json")
+    def test_pydantic_scalars_dump_json(
+        self, benchmark, simple_author_flat_models: list[schemas.AuthorFlat]
+    ):
+        """Pure Pydantic: model_dump_json (flat model)."""
+        models = simple_author_flat_models
+
+        def dump_all():
+            return [m.model_dump_json() for m in models]
+
+        result = benchmark(dump_all)
+        assert len(result) == 100
+
+    @pytest.mark.benchmark(group="scalars-only-dump-json")
+    def test_transmuter_scalars_dump_json(
+        self, benchmark, simple_author_flat_transmuters: list[transmuters.AuthorFlat]
+    ):
+        """Arcanum: model_dump_json (flat transmuter)."""
+        models = simple_author_flat_transmuters
+
+        def dump_all():
+            return [m.model_dump_json() for m in models]
+
+        result = benchmark(dump_all)
+        assert len(result) == 100
+
+
 class TestModelDumpDict:
     """
     Compare model_dump() (serialization to dict).

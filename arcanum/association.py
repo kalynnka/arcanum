@@ -14,7 +14,6 @@ from typing import (
     Literal,
     Optional,
     ParamSpec,
-    Self,
     SupportsIndex,
     Type,
     TypeVar,
@@ -67,17 +66,6 @@ class Association(Generic[A], ABC):
     field_name: str
 
     @classmethod
-    def __pydantic_before_validator__(
-        cls,
-        value: Any,
-        info: core_schema.ValidationInfo,
-    ) -> Any:
-        return active_materia.get().association_before_validator(cls, value, info)
-
-    def __pydantic_after_validator__(self, info: core_schema.ValidationInfo) -> Self:
-        return active_materia.get().association_after_validator(self, info)
-
-    @classmethod
     def __get_pydantic_generic_schema__(
         cls,
         generic_type: Type[A],
@@ -118,7 +106,8 @@ class Association(Generic[A], ABC):
                     f"The association type {source_type} must be used as a model field."
                 )
 
-            value = cls.__pydantic_before_validator__(value, info)
+            materia = active_materia.get()
+            value = materia.association_before_validator(cls, value, info)
             if isinstance(value, cls):
                 instance = value
                 instance.__init__(handler(instance.__payloads__))
@@ -127,7 +116,7 @@ class Association(Generic[A], ABC):
                 instance.__init__(handler(value))
             instance.__generic__ = generic_type
             instance.field_name = info.field_name
-            instance = instance.__pydantic_after_validator__(info)
+            instance = materia.association_after_validator(instance, info)
 
             return instance
 

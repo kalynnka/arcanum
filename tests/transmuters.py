@@ -224,3 +224,38 @@ class Book(TestIdMixin, BaseTransmuter):
     detail: Relation[Optional[BookDetail]] = Relationship()
     categories: RelationCollection[Category] = Relationships()
     reviews: RelationCollection[Review] = Relationships()  # Optional 1-M
+
+
+class AuthorFlat(BaseTransmuter):
+    """Flat Author transmuter without relationships (for benchmarks)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    field: Literal[
+        "Physics",
+        "Biology",
+        "Chemistry",
+        "Literature",
+        "History",
+        "Quantum Physics",
+        "Astronomy",
+        "Dystopian Fiction",
+        "Astrophysics",
+        "Robotics",
+        "Cybernetics",
+        "Xenobiology",
+        "Quantum Physics",
+        "Science Fiction",
+    ]
+
+
+class PublisherFlat(BaseTransmuter):
+    """Flat Publisher transmuter without relationships (for benchmarks)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Annotated[Optional[int], Identity] = Field(default=None, frozen=True)
+    name: str
+    country: str

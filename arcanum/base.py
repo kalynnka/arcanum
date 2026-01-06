@@ -40,6 +40,9 @@ from arcanum.materia.base import (
     active_materia,
 )
 
+# Cache NoOpMateria singleton for fast identity check
+_noop_materia = NoOpMateria()
+
 T = TypeVar("T", bound="BaseTransmuter")
 M = TypeVar("M", bound="TransmuterMetaclass")
 
@@ -381,8 +384,11 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         if isinstance(data, cls):
             return handler(data)
 
-        # Handle NoOpMateria case
-        if isinstance(cls.__transmuter_materia__, NoOpMateria):
+        # Get materia once to avoid repeated ContextVar lookups
+        materia = active_materia.get()
+
+        # Handle NoOpMateria case - fast path using identity check
+        if materia is _noop_materia:
             instance = handler(data)
             object.__setattr__(instance, "__transmuter_provided__", None)
             object.__setattr__(instance, "__transmuter_revalidating__", False)
@@ -398,7 +404,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
             instance = cached or data.transmuter_proxy
             if instance is None or instance.__transmuter_revalidating__:
-                materia = cls.__transmuter_materia__
                 instance = handler(materia.transmuter_before_validator(cls, data, info))
                 object.__setattr__(instance, "__transmuter_provided__", data)
                 object.__setattr__(instance, "__transmuter_revalidating__", False)
