@@ -362,64 +362,11 @@ class RelationCollection(list[T], Association[T]):
             when_used="always",
         )
 
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Type[Association[A]], handler: GetCoreSchemaHandler
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-
-        if not args:
-            raise TypeError(f"Generic type must be provided to the {source_type}.")
-
-        generic_type = args[0]
-
-        def before_validator(
-            value: Any,
-            info: core_schema.ValidationInfo,
-        ) -> Any:
-            return active_materia.get().association_before_validator(cls, value, info)
-
-        def validate(
-            value: list[T],
-            info: core_schema.ValidationInfo,
-        ) -> RelationCollection[T]:
-            if not info.field_name:
-                raise ValueError(
-                    f"The association type {source_type} must be used as a model field."
-                )
-
-            instance = cls(value)
-            instance.__generic__ = generic_type
-            instance.field_name = info.field_name
-            return active_materia.get().association_after_validator(instance, info)
-
-        return core_schema.with_default_schema(
-            core_schema.chain_schema(
-                [
-                    core_schema.with_info_before_validator_function(
-                        function=before_validator,
-                        schema=cls.__get_pydantic_generic_schema__(
-                            generic_type, handler
-                        ),
-                        field_name=handler.field_name,
-                    ),
-                    core_schema.with_info_plain_validator_function(
-                        function=validate,
-                        field_name=handler.field_name,
-                    ),
-                ]
-            ),
-            default_factory=cls,
-            serialization=cls.__get_pydantic_serialize_schema__(generic_type, handler),
-        )
-
     def __init__(self, payloads: Iterable[T] | None = None):
         super().__init__()
         self.__instance__ = None
         self.__loaded__ = False
-        # self.__payloads__ = list(payloads) if payloads else []
-        if payloads:
-            super().extend(payloads)
+        self.__payloads__ = list(payloads) if payloads else []
 
     @property
     def __provided__(self) -> list[Any] | None:
@@ -457,27 +404,14 @@ class RelationCollection(list[T], Association[T]):
             else:
                 return self.__construct__(value)
 
-    # def prepare(self, instance: BaseTransmuter, field_name: str):
-    #     super().prepare(instance, field_name)
-    #     if self.__payloads__:
-    #         # manualy enforce loading first to remove duplicates in payloads
-    #         # objects already assigned to the relationship may be add to payloads during revalidation
-    #         self._load()
-    #         self.extend(self.__payloads__)
-    #         self.__payloads__.clear()
-
     def prepare(self, instance: BaseTransmuter, field_name: str):
         super().prepare(instance, field_name)
-        if super().__len__() > 0:
+        if self.__payloads__:
             # manualy enforce loading first to remove duplicates in payloads
             # objects already assigned to the relationship may be add to payloads during revalidation
             self._load()
-            if self.__provided__ is not None:
-                payloads = set(payload.__transmuter_provided__ for payload in self)
-                provided = set(self.__provided__)
-                self.__provided__.extend(payloads - provided)
-                super().clear()
-                self.__loaded__ = False
+            self.extend(self.__payloads__)
+            self.__payloads__.clear()
 
     @staticmethod
     def ensure_loaded(
@@ -509,11 +443,11 @@ class RelationCollection(list[T], Association[T]):
             return self
 
         # TODO: Better way to avoid duplication relationship append ?
-        # self.__payloads__ = [
-        #     payload
-        #     for payload in self.__payloads__
-        #     if payload.__transmuter_provided__ not in set(self.__provided__)
-        # ]
+        self.__payloads__ = [
+            payload
+            for payload in self.__payloads__
+            if payload.__transmuter_provided__ not in set(self.__provided__)
+        ]
 
         if not len(self.__provided__) == super().__len__():
             # If the length of __provided__ is not equal to the length of self,
