@@ -82,7 +82,7 @@ class TestCreateSingleAuthor:
 
     @pytest.mark.benchmark(group="create-single-author")
     def test_arcanum_create(
-        self, benchmark, arcanum_session_factory, materia, create_author_data
+        self, benchmark, arcanum_session_factory, create_author_data
     ):
         """Arcanum: Transmuter creation."""
         data = random.choice(create_author_data)
@@ -160,7 +160,7 @@ class TestCreateNestedBook:
 
     @pytest.mark.benchmark(group="create-nested-book")
     def test_arcanum_create_nested(
-        self, benchmark, arcanum_session_factory, materia, create_nested_book_data
+        self, benchmark, arcanum_session_factory, create_nested_book_data
     ):
         """Arcanum: Transmuter with nested objects."""
         book_data = random.choice(create_nested_book_data)
@@ -222,7 +222,6 @@ class TestReadSingleAuthor:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Query returns transmuter."""
@@ -296,7 +295,6 @@ class TestReadManyAuthors:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Query returns transmuters."""
@@ -380,7 +378,6 @@ class TestReadNestedBook:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_books: list[models.Book],
     ):
         """Arcanum: Query with eager load."""
@@ -461,7 +458,6 @@ class TestUpdateSingleAuthor:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Transmuter update."""
@@ -547,7 +543,6 @@ class TestUpdateManyAuthors:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Bulk update."""
@@ -624,7 +619,6 @@ class TestSerializeToDict:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: model_dump."""
@@ -700,7 +694,6 @@ class TestSerializeToJson:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Transmuter model_dump_json."""
@@ -753,7 +746,6 @@ class TestScalarsOnlySerializeToDict:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Load transmuter, dump to dict (excluding relationships)."""
@@ -800,7 +792,6 @@ class TestScalarsOnlySerializeToJson:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Load transmuter, dump to JSON (excluding relationships)."""
@@ -872,7 +863,6 @@ class TestRoundtripAuthor:
         self,
         benchmark,
         arcanum_session_factory,
-        materia,
         seeded_authors: list[models.Author],
     ):
         """Arcanum: Load transmuter, modify, flush."""
