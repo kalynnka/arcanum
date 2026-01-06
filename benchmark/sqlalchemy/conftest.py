@@ -4,11 +4,11 @@ import random
 from typing import Any, Generator
 
 import pytest
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import sessionmaker
 
 from arcanum.materia.sqlalchemy import Session as ArcanumSession
 from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
-from sqlalchemy import Engine, create_engine
-from sqlalchemy.orm import sessionmaker
 from tests.models import Author as AuthorModel
 from tests.models import Base
 from tests.models import Book as BookModel

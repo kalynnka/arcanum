@@ -108,7 +108,7 @@ jobs:
           run: uv run pytest benchmark/noop/ --codspeed --benchmark-warmup-iterations=5
 
   benchmarks-sqlalchemy:
-    name: Run SQLAlchemy benchmarks (instrumentation)
+    name: Run SQLAlchemy benchmarks (simulation)
     runs-on: ubuntu-latest
     needs: unit_tests
 
@@ -133,5 +133,5 @@ jobs:
       - name: Run SQLAlchemy benchmarks
         uses: CodSpeedHQ/action@v4
         with:
-          mode: instrumentation
+          mode: simulation
           run: uv run pytest benchmark/sqlalchemy/ --codspeed --benchmark-warmup-iterations=5
