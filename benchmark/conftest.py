@@ -284,6 +284,22 @@ def simple_author_transmuters(
     return [transmuters_module.Author.model_validate(d) for d in simple_author_data]
 
 
+@pytest.fixture(scope="session")
+def simple_author_flat_models(
+    simple_author_data: list[dict[str, Any]],
+) -> list[schemas.AuthorFlat]:
+    """Pre-validated flat Pydantic author models (no relationships)."""
+    return [schemas.AuthorFlat.model_validate(d) for d in simple_author_data]
+
+
+@pytest.fixture(scope="session")
+def simple_author_flat_transmuters(
+    simple_author_data: list[dict[str, Any]],
+) -> list[transmuters_module.AuthorFlat]:
+    """Pre-validated flat NoOp author transmuters (no relationships)."""
+    return [transmuters_module.AuthorFlat.model_validate(d) for d in simple_author_data]
+
+
 class MockAuthor:
     """Mock ORM-like author object."""
 

@@ -315,7 +315,7 @@ class TestCircularRelationships:
                 select(Employee).where(Employee["test_id"] == lead_test_id)
             ).one()
 
-            # === Verify Multiple Circular Paths ===
+            # Verify Multiple Circular Paths
 
             # Path 1: Company -> Dept -> Employee -> Company (CEO)
             assert company.ceo.value
