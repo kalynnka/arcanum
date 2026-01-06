@@ -16,7 +16,8 @@ from tests.models import Publisher as PublisherModel
 from tests.transmuters import sqlalchemy_materia
 
 SEED = 42
-DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"
+# Use SQLite in-memory for benchmarks - avoids network I/O for instrumentation mode
+DB_URL = "sqlite:///:memory:"
 
 
 @pytest.fixture(scope="session")
@@ -26,8 +27,6 @@ def engine() -> Generator[Engine, None, None]:
         DB_URL,
         echo=False,
         future=True,
-        pool_size=10,
-        max_overflow=20,
     )
 
     try:

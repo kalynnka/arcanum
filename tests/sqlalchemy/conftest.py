@@ -23,9 +23,10 @@ from tests.transmuters import (
     sqlalchemy_materia,
 )
 
-# Database URL points to the docker-compose postgres service exposed on localhost
-DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"
-ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanum"
+# Use SQLite in-memory for tests - avoids external database dependency
+# Using shared cache mode to allow multiple connections to same in-memory database
+DB_URL = "sqlite:///:memory:?cache=shared"
+ASYNC_DB_URL = "sqlite+aiosqlite:///:memory:?cache=shared"
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -35,6 +36,9 @@ async def async_engine():
         # echo=True,
         future=True,
     )
+    # Create tables for async tests
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     try:
         yield engine
@@ -43,7 +47,7 @@ async def async_engine():
 
 
 @pytest.fixture(scope="session")
-def engine(async_engine: AsyncEngine):
+def engine():
     sync_engine = create_engine(
         DB_URL,
         # echo=True,
