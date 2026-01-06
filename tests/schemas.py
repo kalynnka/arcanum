@@ -149,6 +149,25 @@ class BookDetail(TestIdMixin, BaseModel):
     book: Book
 
 
+# Book schema (M-1 with Author, M-1 with Publisher, 1-1 with BookDetail, M-M with Category, optional 1-1 with Translator, optional 1-M with Reviews)
+class Book(TestIdMixin, BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: Optional[int] = Field(default=None, frozen=True)
+    title: str
+    year: int
+    author_id: int | None = None
+    publisher_id: int | None = None
+    translator_id: int | None = None
+
+    author: Author
+    publisher: Publisher
+    translator: Optional[Translator] = None
+    detail: Optional[BookDetail] = None
+    categories: list[Category] = Field(default_factory=list)
+    reviews: list[Review] = Field(default_factory=list)  # Optional 1-M
+
+
 # Category schema (M-M with Book)
 class Category(TestIdMixin, BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -261,22 +280,3 @@ class Team(TestIdMixin, BaseModel):
     manager: Employee
     project: Project
     members: list[Employee] = Field(default_factory=list)
-
-
-# Book schema (M-1 with Author, M-1 with Publisher, 1-1 with BookDetail, M-M with Category, optional 1-1 with Translator, optional 1-M with Reviews)
-class Book(TestIdMixin, BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: Optional[int] = Field(default=None, frozen=True)
-    title: str
-    year: int
-    author_id: int | None = None
-    publisher_id: int | None = None
-    translator_id: int | None = None
-
-    author: Author
-    publisher: Publisher
-    translator: Optional[Translator] = None
-    detail: Optional[BookDetail] = None
-    categories: list[Category] = Field(default_factory=list)
-    reviews: list[Review] = Field(default_factory=list)  # Optional 1-M

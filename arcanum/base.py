@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-from abc import ABC
 from contextvars import ContextVar
 from copy import copy as shallow_copy
 from copy import deepcopy
@@ -323,7 +322,7 @@ class TransmuterMetaclass(ModelMetaclass):
         return self.__transmuter_update_model__
 
 
-class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
+class BaseTransmuter(BaseModel, metaclass=TransmuterMetaclass):
     __slots__ = ("__transmuter_provided__", "__transmuter_revalidating__")
 
     __transmuter_provided__: Optional[TransmuterProxied] = NoInitField(init=False)

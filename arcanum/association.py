@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC
 from functools import cached_property, partial, wraps
 from types import UnionType
 from typing import (
@@ -57,7 +56,7 @@ def is_association(t: type) -> bool:
     return issubclass(arg, Association)
 
 
-class Association(Generic[A], ABC):
+class Association(Generic[A]):
     __generic__: Type[A]
     __instance__: BaseTransmuter | None
     __loaded__: bool
@@ -110,10 +109,9 @@ class Association(Generic[A], ABC):
             value = materia.association_before_validator(cls, value, info)
             if isinstance(value, cls):
                 instance = value
-                instance.__init__(handler(instance.__payloads__))
+                instance.__payloads__ = handler(instance.__payloads__)
             else:
-                instance = cls.__new__(cls)
-                instance.__init__(handler(value))
+                instance = cls(handler(value))
             instance.__generic__ = generic_type
             instance.field_name = info.field_name
             instance = materia.association_after_validator(instance, info)
@@ -354,7 +352,7 @@ class RelationCollection(list[T], Association[T]):
         cls, generic_type: Type[T], handler: GetCoreSchemaHandler
     ) -> core_schema.SerSchema | None:
         def serialize(value: RelationCollection[T], serializer) -> Any:
-            return serializer(value.copy())
+            return serializer(value)
 
         return core_schema.wrap_serializer_function_ser_schema(
             serialize,
