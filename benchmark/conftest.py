@@ -8,6 +8,15 @@ import pytest
 from tests import schemas
 from tests import transmuters as transmuters_module
 
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers",
+        "baseline: mark test as baseline/control group (excluded from CodSpeed regression checks)",
+    )
+
+
 SEED = 42
 random.seed(SEED)
 
