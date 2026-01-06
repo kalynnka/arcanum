@@ -99,20 +99,6 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         )
 
     @cached_property
-    def list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of tuple results."""
-        return get_cached_adapter(list[tuple[*self.entities]])
-
-    @cached_property
-    def scalar_list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of scalar results."""
-        return (
-            get_cached_adapter(list[self.entities[0]])
-            if self.entities
-            else TypeAdapter(list[object])
-        )
-
-    @cached_property
     def validate(self) -> bool:
         """Get validate flag from active materia context."""
         return active_materia.get().validate
@@ -132,23 +118,6 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
                 )
             return row
 
-    def _adapt_many(self, rows: Sequence[Any]) -> list[Any]:
-        """Adapt a list of rows based on the validate flag."""
-        if self.validate:
-            return self.list_adapter.validate_python(rows)
-        else:
-            return [
-                tuple(
-                    entity.model_construct(data=item)
-                    if isinstance(entity, type) and issubclass(entity, BaseTransmuter)
-                    else item
-                    for entity, item in zip(self.entities, row)
-                )
-                if isinstance(row, tuple)
-                else row
-                for row in rows
-            ]
-
     def _adapt_scalar(self, item: Any) -> Any:
         """Adapt a scalar result based on the validate flag."""
         if self.validate:
@@ -162,20 +131,6 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             ):
                 return entity.model_construct(data=item)
             return item
-
-    def _adapt_many_scalar(self, items: Sequence[Any]) -> list[Any]:
-        """Adapt a list of scalar results based on the validate flag."""
-        if self.validate:
-            return self.scalar_list_adapter.validate_python(items)
-        else:
-            entity = self.entities[0] if self.entities else None
-            if (
-                entity
-                and isinstance(entity, type)
-                and issubclass(entity, BaseTransmuter)
-            ):
-                return [entity.model_construct(data=item) for item in items]
-            return list(items)
 
     @property
     def t(self) -> Self:
@@ -217,12 +172,12 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                yield self._adapt_many(partition)
+                yield [self._adapt(row) for row in partition]
             else:
                 break
 
     def fetchall(self) -> Sequence[Row[_TP]]:
-        return self._adapt_many(self._allrows())
+        return [self._adapt(row) for row in self._allrows()]
 
     def fetchone(self) -> Optional[Row[_TP]]:
         row = self._onerow_getter(self)
@@ -232,10 +187,10 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
             return self._adapt(row)
 
     def fetchmany(self, size: int | None = None) -> Sequence[Row[_TP]]:
-        return self._adapt_many(self._manyrow_getter(size))
+        return [self._adapt(row) for row in self._manyrow_getter(size)]
 
     def all(self) -> Sequence[Row[_TP]]:
-        return self._adapt_many(self._allrows())
+        return [self._adapt(row) for row in self._allrows()]
 
     def first(self) -> Optional[Row[_TP]]:
         return (
@@ -382,15 +337,6 @@ class AdaptedScalarResult(ScalarResult[_R]):
         )
 
     @cached_property
-    def scalar_list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of scalar results."""
-        return (
-            get_cached_adapter(list[self._entities[0]])
-            if self._entities
-            else TypeAdapter(list[object])
-        )
-
-    @cached_property
     def validate(self) -> bool:
         """Get validate flag from active materia context."""
         return active_materia.get().validate
@@ -408,20 +354,6 @@ class AdaptedScalarResult(ScalarResult[_R]):
             ):
                 return entity.model_construct(data=item)
             return item
-
-    def _adapt_many_scalar(self, items: Sequence[Any]) -> list[Any]:
-        """Adapt a list of scalar results based on the validate flag."""
-        if self.validate:
-            return self.scalar_list_adapter.validate_python(items)
-        else:
-            entity = self._entities[0] if self._entities else None
-            if (
-                entity
-                and isinstance(entity, type)
-                and issubclass(entity, BaseTransmuter)
-            ):
-                return [entity.model_construct(data=item) for item in items]
-            return list(items)
 
     def unique(
         self,
@@ -441,18 +373,18 @@ class AdaptedScalarResult(ScalarResult[_R]):
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                yield self._adapt_many_scalar(partition)
+                yield [self._adapt_scalar(scalar) for scalar in partition]
             else:
                 break
 
     def fetchall(self) -> Sequence[_R]:
-        return self._adapt_many_scalar(self._allrows())
+        return [self._adapt_scalar(scalar) for scalar in self._allrows()]
 
     def fetchmany(self, size: int | None = None) -> Sequence[_R]:
-        return self._adapt_many_scalar(self._manyrow_getter(size))
+        return [self._adapt_scalar(scalar) for scalar in self._manyrow_getter(size)]
 
     def all(self) -> Sequence[_R]:
-        return self._adapt_many_scalar(self._allrows())
+        return [self._adapt_scalar(scalar) for scalar in self._allrows()]
 
     def first(self) -> _R | None:
         return (
@@ -524,15 +456,6 @@ class AdaptedFrozenResult(FrozenResult[_TP]):
         )
 
     @cached_property
-    def scalar_list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of scalar results."""
-        return (
-            get_cached_adapter(list[self._entities[0]])
-            if self._entities
-            else TypeAdapter(list[object])
-        )
-
-    @cached_property
     def validate(self) -> bool:
         """Get validate flag from active materia context."""
         return active_materia.get().validate
@@ -550,20 +473,6 @@ class AdaptedFrozenResult(FrozenResult[_TP]):
             ):
                 return entity.model_construct(data=item)
             return item
-
-    def _adapt_many_scalar(self, items: Sequence[Any]) -> list[Any]:
-        """Adapt a list of scalar results based on the validate flag."""
-        if self.validate:
-            return self.scalar_list_adapter.validate_python(items)
-        else:
-            entity = self._entities[0] if self._entities else None
-            if (
-                entity
-                and isinstance(entity, type)
-                and issubclass(entity, BaseTransmuter)
-            ):
-                return [entity.model_construct(data=item) for item in items]
-            return list(items)
 
     def rewrite_rows(self) -> Sequence[Sequence[Any]]:
         if self._source_supports_scalars:
@@ -618,9 +527,13 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         return get_cached_adapter(tuple[*self._entities])
 
     @cached_property
-    def list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of tuple results."""
-        return get_cached_adapter(list[tuple[*self._entities]])
+    def scalar_adapter(self) -> TypeAdapter:
+        """Get the adapter for scalar results."""
+        return (
+            get_cached_adapter(self._entities[0])
+            if self._entities
+            else TypeAdapter(object)
+        )
 
     @cached_property
     def validate(self) -> bool:
@@ -642,23 +555,6 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
                 )
             return row
 
-    def _adapt_many(self, rows: Sequence[Any]) -> list[Any]:
-        """Adapt a list of rows based on the validate flag."""
-        if self.validate:
-            return self.list_adapter.validate_python(rows)
-        else:
-            return [
-                tuple(
-                    entity.model_construct(data=item)
-                    if isinstance(entity, type) and issubclass(entity, BaseTransmuter)
-                    else item
-                    for entity, item in zip(self._entities, row)
-                )
-                if isinstance(row, (tuple, list))
-                else row
-                for row in rows
-            ]
-
     @_generative
     def unique(self, strategy: Optional[_UniqueFilterType] = None) -> Self:
         self._unique_filter_state = (set(), strategy)
@@ -671,10 +567,9 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                adapted = self._adapt_many([row.values() for row in partition])
                 yield list(
-                    dict(zip(row.keys(), adapted_values))
-                    for row, adapted_values in zip(partition, adapted)
+                    dict(zip(row.keys(), self._adapt(row.values())))
+                    for row in partition
                 )
             else:
                 break
@@ -687,20 +582,15 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
             return dict(zip(row.keys(), self._adapt(row.values())))
 
     def fetchmany(self, size: int | None = None) -> Sequence[dict[str, Any]]:
-        rows = self._manyrow_getter(size)
-        adapted = self._adapt_many([row.values() for row in rows])
         return list(
-            dict(zip(row.keys(), adapted_values))
-            for row, adapted_values in zip(rows, adapted)
+            dict(zip(row.keys(), self._adapt(row.values())))
+            for row in self._manyrow_getter(size)
         )
 
     def fetchall(self) -> Sequence[dict[str, Any]]:
         """A synonym for the :meth:`AdaptedMappingResult.all` method."""
-        rows = self._allrows()
-        adapted = self._adapt_many([row.values() for row in rows])
         return list(
-            dict(zip(row.keys(), adapted_values))
-            for row, adapted_values in zip(rows, adapted)
+            dict(zip(row.keys(), self._adapt(row.values()))) for row in self._allrows()
         )
 
     def first(self) -> dict[str, Any] | None:
@@ -717,11 +607,8 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         )
 
     def all(self) -> Sequence[dict[str, Any]]:
-        rows = self._allrows()
-        adapted = self._adapt_many([row.values() for row in rows])
         return list(
-            dict(zip(row.keys(), adapted_values))
-            for row, adapted_values in zip(rows, adapted)
+            dict(zip(row.keys(), self._adapt(row.values()))) for row in self._allrows()
         )
 
     def one(self) -> dict[str, Any]:
@@ -809,20 +696,6 @@ class AsyncAdaptedResult(_WithKeys, AsyncAdaptedCommon[Row[_TP]]):
         )
 
     @cached_property
-    def list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of tuple results."""
-        return get_cached_adapter(list[tuple[*self.entities]])
-
-    @cached_property
-    def scalar_list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of scalar results."""
-        return (
-            get_cached_adapter(list[self.entities[0]])
-            if self.entities
-            else TypeAdapter(list[object])
-        )
-
-    @cached_property
     def validate(self) -> bool:
         """Get validate flag from active materia context."""
         return active_materia.get().validate
@@ -842,23 +715,6 @@ class AsyncAdaptedResult(_WithKeys, AsyncAdaptedCommon[Row[_TP]]):
                 )
             return row
 
-    def _adapt_many(self, rows: Sequence[Any]) -> list[Any]:
-        """Adapt a list of rows based on the validate flag."""
-        if self.validate:
-            return self.list_adapter.validate_python(rows)
-        else:
-            return [
-                tuple(
-                    entity.model_construct(data=item)
-                    if isinstance(entity, type) and issubclass(entity, BaseTransmuter)
-                    else item
-                    for entity, item in zip(self.entities, row)
-                )
-                if isinstance(row, tuple)
-                else row
-                for row in rows
-            ]
-
     def _adapt_scalar(self, item: Any) -> Any:
         """Adapt a scalar result based on the validate flag."""
         if self.validate:
@@ -872,20 +728,6 @@ class AsyncAdaptedResult(_WithKeys, AsyncAdaptedCommon[Row[_TP]]):
             ):
                 return entity.model_construct(data=item)
             return item
-
-    def _adapt_many_scalar(self, items: Sequence[Any]) -> list[Any]:
-        """Adapt a list of scalar results based on the validate flag."""
-        if self.validate:
-            return self.scalar_list_adapter.validate_python(items)
-        else:
-            entity = self.entities[0] if self.entities else None
-            if (
-                entity
-                and isinstance(entity, type)
-                and issubclass(entity, BaseTransmuter)
-            ):
-                return [entity.model_construct(data=item) for item in items]
-            return list(items)
 
     @property
     def t(self) -> Self:
@@ -915,14 +757,14 @@ class AsyncAdaptedResult(_WithKeys, AsyncAdaptedCommon[Row[_TP]]):
         while True:
             partition = await greenlet_spawn(getter, self, size)
             if partition:
-                yield self._adapt_many(partition)
+                yield [self._adapt(row) for row in partition]
             else:
                 break
 
     async def fetchall(self) -> Sequence[Row[_TP]]:
         """A synonym for the :meth:`AsyncAdaptedResult.all` method."""
         rows = await greenlet_spawn(self._allrows)
-        return self._adapt_many(rows)
+        return [self._adapt(row) for row in rows]
 
     async def fetchone(self) -> Optional[Row[_TP]]:
         """Fetch one row."""
@@ -935,12 +777,12 @@ class AsyncAdaptedResult(_WithKeys, AsyncAdaptedCommon[Row[_TP]]):
     async def fetchmany(self, size: int | None = None) -> Sequence[Row[_TP]]:
         """Fetch many rows."""
         rows = await greenlet_spawn(self._manyrow_getter, self, size)
-        return self._adapt_many(rows)
+        return [self._adapt(row) for row in rows]
 
     async def all(self) -> Sequence[Row[_TP]]:
         """Return all rows in a list."""
         rows = await greenlet_spawn(self._allrows)
-        return self._adapt_many(rows)
+        return [self._adapt(row) for row in rows]
 
     def __aiter__(self) -> AsyncAdaptedResult[_TP]:
         return self
@@ -1066,15 +908,6 @@ class AsyncAdaptedScalarResult(AsyncAdaptedCommon[_R]):
         )
 
     @cached_property
-    def scalar_list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of scalar results."""
-        return (
-            get_cached_adapter(list[self._entities[0]])
-            if self._entities
-            else TypeAdapter(list[object])
-        )
-
-    @cached_property
     def validate(self) -> bool:
         """Get validate flag from active materia context."""
         return active_materia.get().validate
@@ -1093,20 +926,6 @@ class AsyncAdaptedScalarResult(AsyncAdaptedCommon[_R]):
                 return entity.model_construct(data=item)
             return item
 
-    def _adapt_many_scalar(self, items: Sequence[Any]) -> list[Any]:
-        """Adapt a list of scalar results based on the validate flag."""
-        if self.validate:
-            return self.scalar_list_adapter.validate_python(items)
-        else:
-            entity = self._entities[0] if self._entities else None
-            if (
-                entity
-                and isinstance(entity, type)
-                and issubclass(entity, BaseTransmuter)
-            ):
-                return [entity.model_construct(data=item) for item in items]
-            return list(items)
-
     def unique(
         self,
         strategy: Optional[_UniqueFilterType] = None,
@@ -1122,24 +941,24 @@ class AsyncAdaptedScalarResult(AsyncAdaptedCommon[_R]):
         while True:
             partition = await greenlet_spawn(getter, self, size)
             if partition:
-                yield self._adapt_many_scalar(partition)
+                yield [self._adapt_scalar(scalar) for scalar in partition]
             else:
                 break
 
     async def fetchall(self) -> Sequence[_R]:
         """A synonym for the :meth:`AsyncAdaptedScalarResult.all` method."""
         scalars = await greenlet_spawn(self._allrows)
-        return self._adapt_many_scalar(scalars)
+        return [self._adapt_scalar(scalar) for scalar in scalars]
 
     async def fetchmany(self, size: int | None = None) -> Sequence[_R]:
         """Fetch many objects."""
         scalars = await greenlet_spawn(self._manyrow_getter, self, size)
-        return self._adapt_many_scalar(scalars)
+        return [self._adapt_scalar(scalar) for scalar in scalars]
 
     async def all(self) -> Sequence[_R]:
         """Return all scalar values in a list."""
         scalars = await greenlet_spawn(self._allrows)
-        return self._adapt_many_scalar(scalars)
+        return [self._adapt_scalar(scalar) for scalar in scalars]
 
     def __aiter__(self) -> AsyncAdaptedScalarResult[_R]:
         return self
@@ -1195,11 +1014,6 @@ class AsyncAdaptedMappingResult(_WithKeys, AsyncAdaptedCommon[RowMapping]):
         return get_cached_adapter(tuple[*self._entities])
 
     @cached_property
-    def list_adapter(self) -> TypeAdapter:
-        """Get the adapter for list of tuple results."""
-        return get_cached_adapter(list[tuple[*self._entities]])
-
-    @cached_property
     def validate(self) -> bool:
         """Get validate flag from active materia context."""
         return active_materia.get().validate
@@ -1219,23 +1033,6 @@ class AsyncAdaptedMappingResult(_WithKeys, AsyncAdaptedCommon[RowMapping]):
                 )
             return row
 
-    def _adapt_many(self, rows: Sequence[Any]) -> list[Any]:
-        """Adapt a list of rows based on the validate flag."""
-        if self.validate:
-            return self.list_adapter.validate_python(rows)
-        else:
-            return [
-                tuple(
-                    entity.model_construct(data=item)
-                    if isinstance(entity, type) and issubclass(entity, BaseTransmuter)
-                    else item
-                    for entity, item in zip(self._entities, row)
-                )
-                if isinstance(row, (tuple, list))
-                else row
-                for row in rows
-            ]
-
     @_generative
     def unique(self, strategy: Optional[_UniqueFilterType] = None) -> Self:
         self._unique_filter_state = (set(), strategy)
@@ -1253,10 +1050,9 @@ class AsyncAdaptedMappingResult(_WithKeys, AsyncAdaptedCommon[RowMapping]):
         while True:
             partition = await greenlet_spawn(getter, self, size)
             if partition:
-                adapted = self._adapt_many([row.values() for row in partition])
                 yield list(
-                    dict(zip(row.keys(), adapted_values))
-                    for row, adapted_values in zip(partition, adapted)
+                    dict(zip(row.keys(), self._adapt(row.values())))
+                    for row in partition
                 )
             else:
                 break
@@ -1272,29 +1068,17 @@ class AsyncAdaptedMappingResult(_WithKeys, AsyncAdaptedCommon[RowMapping]):
     async def fetchmany(self, size: int | None = None) -> Sequence[dict[str, Any]]:
         """Fetch many rows."""
         rows = await greenlet_spawn(self._manyrow_getter, self, size)
-        adapted = self._adapt_many([row.values() for row in rows])
-        return list(
-            dict(zip(row.keys(), adapted_values))
-            for row, adapted_values in zip(rows, adapted)
-        )
+        return list(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
 
     async def fetchall(self) -> Sequence[dict[str, Any]]:
         """A synonym for the :meth:`AsyncAdaptedMappingResult.all` method."""
         rows = await greenlet_spawn(self._allrows)
-        adapted = self._adapt_many([row.values() for row in rows])
-        return list(
-            dict(zip(row.keys(), adapted_values))
-            for row, adapted_values in zip(rows, adapted)
-        )
+        return list(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
 
     async def all(self) -> Sequence[dict[str, Any]]:
         """Return all rows in a list."""
         rows = await greenlet_spawn(self._allrows)
-        adapted = self._adapt_many([row.values() for row in rows])
-        return list(
-            dict(zip(row.keys(), adapted_values))
-            for row, adapted_values in zip(rows, adapted)
-        )
+        return list(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
 
     def __aiter__(self) -> AsyncAdaptedMappingResult:
         return self
