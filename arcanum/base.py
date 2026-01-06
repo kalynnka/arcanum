@@ -381,8 +381,11 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
         if isinstance(data, cls):
             return handler(data)
 
-        # Handle NoOpMateria case
-        if isinstance(cls.__transmuter_materia__, NoOpMateria):
+        # Get materia once to avoid repeated ContextVar lookups
+        materia = active_materia.get()
+
+        # Handle NoOpMateria case - fast path using class name check
+        if materia.__class__.__name__ == "NoOpMateria":
             instance = handler(data)
             object.__setattr__(instance, "__transmuter_provided__", None)
             object.__setattr__(instance, "__transmuter_revalidating__", False)
@@ -398,7 +401,6 @@ class BaseTransmuter(BaseModel, ABC, metaclass=TransmuterMetaclass):
 
             instance = cached or data.transmuter_proxy
             if instance is None or instance.__transmuter_revalidating__:
-                materia = cls.__transmuter_materia__
                 instance = handler(materia.transmuter_before_validator(cls, data, info))
                 object.__setattr__(instance, "__transmuter_provided__", data)
                 object.__setattr__(instance, "__transmuter_revalidating__", False)

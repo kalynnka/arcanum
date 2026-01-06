@@ -72,10 +72,18 @@ class Association(Generic[A], ABC):
         value: Any,
         info: core_schema.ValidationInfo,
     ) -> Any:
-        return active_materia.get().association_before_validator(cls, value, info)
+        materia = active_materia.get()
+        # Fast path for NoOpMateria - avoid method call overhead
+        if materia.__class__.__name__ == "NoOpMateria":
+            return value
+        return materia.association_before_validator(cls, value, info)
 
     def __pydantic_after_validator__(self, info: core_schema.ValidationInfo) -> Self:
-        return active_materia.get().association_after_validator(self, info)
+        materia = active_materia.get()
+        # Fast path for NoOpMateria - avoid method call overhead
+        if materia.__class__.__name__ == "NoOpMateria":
+            return self
+        return materia.association_after_validator(self, info)
 
     @classmethod
     def __get_pydantic_generic_schema__(
