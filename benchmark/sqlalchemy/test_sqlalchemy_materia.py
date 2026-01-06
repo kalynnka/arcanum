@@ -739,7 +739,8 @@ class TestScalarsOnlySerializeToDict:
 
         def dump_all():
             with session_factory() as session:
-                authors = [session.get(models.Author, aid) for aid in author_ids]
+                stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+                authors = session.scalars(stmt).all()
                 validated = [schemas.AuthorFlat.model_validate(a) for a in authors]
                 return [v.model_dump() for v in validated]
 
@@ -760,7 +761,8 @@ class TestScalarsOnlySerializeToDict:
 
         def dump_all():
             with arcanum_session_factory() as session:
-                authors = [session.get(Author, aid) for aid in author_ids]
+                stmt = select(Author).where(Author["id"].in_(author_ids))
+                authors = session.scalars(stmt).all()
                 return [a.model_dump(exclude={"books"}) for a in authors]
 
         result = benchmark(dump_all)
@@ -785,7 +787,8 @@ class TestScalarsOnlySerializeToJson:
 
         def dump_all():
             with session_factory() as session:
-                authors = [session.get(models.Author, aid) for aid in author_ids]
+                stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+                authors = session.scalars(stmt).all()
                 validated = [schemas.AuthorFlat.model_validate(a) for a in authors]
                 return [v.model_dump_json() for v in validated]
 
@@ -805,7 +808,8 @@ class TestScalarsOnlySerializeToJson:
 
         def dump_all():
             with arcanum_session_factory() as session:
-                authors = [session.get(Author, aid) for aid in author_ids]
+                stmt = select(Author).where(Author["id"].in_(author_ids))
+                authors = session.scalars(stmt).all()
                 return [a.model_dump_json(exclude={"books"}) for a in authors]
 
         result = benchmark(dump_all)
