@@ -26,7 +26,15 @@ from tests.transmuters import (
 # Use SQLite in-memory for tests - avoids external database dependency
 # Using shared cache mode to allow multiple connections to same in-memory database
 DB_URL = "sqlite:///:memory:?cache=shared"
+# DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"  # For local testing with Postgres
 ASYNC_DB_URL = "sqlite+aiosqlite:///:memory:?cache=shared"
+# ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanum"  # For local testing with Postgres
+
+
+@pytest.fixture(scope="module", autouse=True)
+def materia():
+    with sqlalchemy_materia:
+        yield sqlalchemy_materia
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -65,12 +73,6 @@ def setup_database(engine):
     with engine.begin() as conn:
         Base.metadata.drop_all(conn)
         Base.metadata.create_all(conn)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def materia():
-    with sqlalchemy_materia:
-        yield sqlalchemy_materia
 
 
 @pytest_asyncio.fixture(scope="session")

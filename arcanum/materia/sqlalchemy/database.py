@@ -220,15 +220,20 @@ class Session(SqlalchemySession):
             _add_event=_add_event,
         )
 
-        if not execution_options.get("sa_top_level_orm_context", False):
-            entities = resolve_statement_entities(statement)
-            if entities and any(
-                isinstance(e, type) and issubclass(e, BaseTransmuter) for e in entities
-            ):
-                return AdaptedResult(
-                    real_result=result,
-                    entities=tuple(entities),
-                )  # pyright: ignore[reportReturnType]
+        if execution_options.get("sa_top_level_orm_context", False):
+            return result
+
+        if execution_options.get("_sa_orm_load_options", {}):
+            return result
+
+        entities = resolve_statement_entities(statement)
+        if entities and any(
+            isinstance(e, type) and issubclass(e, BaseTransmuter) for e in entities
+        ):
+            return AdaptedResult(
+                real_result=result,
+                entities=tuple(entities),
+            )  # pyright: ignore[reportReturnType]
 
         return result
 

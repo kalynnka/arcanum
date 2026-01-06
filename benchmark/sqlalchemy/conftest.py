@@ -55,7 +55,7 @@ def arcanum_session_factory(engine: Engine) -> sessionmaker:
     return sessionmaker(bind=engine, expire_on_commit=False, class_=ArcanumSession)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module", autouse=True)
 def materia() -> Generator[SqlalchemyMateria, None, None]:
     """Activate sqlalchemy_materia for tests that need it."""
     with sqlalchemy_materia:
