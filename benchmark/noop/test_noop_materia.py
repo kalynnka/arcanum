@@ -12,8 +12,9 @@ class TestSimpleValidation:
     Both Pydantic and NoOpMateria validate/construct with the same fields, 100 objects.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="scalars-only-objects")
-    def test_pydantic_validate(self, benchmark, simple_author_data: list[dict]):
+    def test_pydantic_scalar_validate(self, benchmark, simple_author_data: list[dict]):
         """Pure Pydantic: model_validate on simple objects."""
         data = simple_author_data
 
@@ -24,9 +25,10 @@ class TestSimpleValidation:
         assert len(result) == 100
         assert isinstance(result[0], schemas.Author)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="scalars-only-objects")
-    def test_pydantic_list_adapter(self, benchmark, simple_author_data: list[dict]):
-        """Pure Pydantic: model_construct (no validation)."""
+    def test_pydantic_scalar_adapter(self, benchmark, simple_author_data: list[dict]):
+        """Pure Pydantic: TypeAdapter validation."""
         data = simple_author_data
         adapter = TypeAdapter(list[schemas.Author])
 
@@ -38,8 +40,10 @@ class TestSimpleValidation:
         assert isinstance(result[0], schemas.Author)
 
     @pytest.mark.benchmark(group="scalars-only-objects")
-    def test_noop_materia_validate(self, benchmark, simple_author_data: list[dict]):
-        """NoOpMateria: model_validate on simple transmuters."""
+    def test_transmuter_scalar_validate(
+        self, benchmark, simple_author_data: list[dict]
+    ):
+        """Arcanum: model_validate on transmuters."""
         data = simple_author_data
 
         def validate_all():
@@ -50,8 +54,8 @@ class TestSimpleValidation:
         assert isinstance(result[0], transmuters.Author)
 
     @pytest.mark.benchmark(group="scalars-only-objects")
-    def test_noop_materia_list_adapter(self, benchmark, simple_author_data: list[dict]):
-        """NoOpMateria: model_construct (no validation)."""
+    def test_transmuter_scalar_adapter(self, benchmark, simple_author_data: list[dict]):
+        """Arcanum: TypeAdapter validation."""
         data = simple_author_data
         adapter = TypeAdapter(list[transmuters.Author])
 
@@ -68,9 +72,10 @@ class TestNestedValidation:
     Compare nested model validation/construct (one level of nesting).
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="nested-objects")
-    def test_pydantic_validate_nested(self, benchmark, nested_book_data: list[dict]):
-        """Pure Pydantic: Validates all nested relationships inline."""
+    def test_pydantic_nested_validate(self, benchmark, nested_book_data: list[dict]):
+        """Pure Pydantic: Validates nested relationships."""
         data = nested_book_data
 
         def validate_all():
@@ -82,11 +87,10 @@ class TestNestedValidation:
         assert isinstance(result[0].author, schemas.Author)
         assert isinstance(result[0].publisher, schemas.Publisher)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="nested-objects")
-    def test_pydantic_validate_nested_list_adapter(
-        self, benchmark, nested_book_data: list[dict]
-    ):
-        """Pure Pydantic: Validates all nested relationships inline."""
+    def test_pydantic_nested_adapter(self, benchmark, nested_book_data: list[dict]):
+        """Pure Pydantic: TypeAdapter validation."""
         data = nested_book_data
         adapter = TypeAdapter(list[schemas.Book])
 
@@ -100,9 +104,8 @@ class TestNestedValidation:
         assert isinstance(result[0].publisher, schemas.Publisher)
 
     @pytest.mark.benchmark(group="nested-objects")
-    def test_noop_transmuter_validate_nested(
-        self, benchmark, nested_book_data: list[dict]
-    ):
+    def test_transmuter_nested_validate(self, benchmark, nested_book_data: list[dict]):
+        """Arcanum: Validates nested relationships."""
         data = nested_book_data
 
         def validate_all():
@@ -115,9 +118,8 @@ class TestNestedValidation:
         assert isinstance(result[0].publisher.value, transmuters.Publisher)
 
     @pytest.mark.benchmark(group="nested-objects")
-    def test_noop_transmuter_validate_nested_list_adapter(
-        self, benchmark, nested_book_data: list[dict]
-    ):
+    def test_transmuter_nested_adapter(self, benchmark, nested_book_data: list[dict]):
+        """Arcanum: TypeAdapter validation."""
         data = nested_book_data
         adapter = TypeAdapter(list[transmuters.Book])
 
@@ -138,11 +140,10 @@ class TestDeepNestedValidation:
     Tests author data with books that reference back to the same author (circular).
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="deep-nested-objects")
-    def test_pydantic_validate_deep_nested(
-        self, benchmark, deep_nested_data: list[dict]
-    ):
-        """Pure Pydantic: Validates entire object graph."""
+    def test_pydantic_deep_validate(self, benchmark, deep_nested_data: list[dict]):
+        """Pure Pydantic: Validates deep object graph."""
         data = deep_nested_data
 
         def validate_all():
@@ -156,11 +157,10 @@ class TestDeepNestedValidation:
         # Verify circular reference: book.author should be the same as the parent author
         assert result[0].books[0].author.id == result[0].id
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="deep-nested-objects")
-    def test_pydantic_validate_deep_nested_list_adapter(
-        self, benchmark, deep_nested_data: list[dict]
-    ):
-        """Pure Pydantic: Validates entire object graph using TypeAdapter."""
+    def test_pydantic_deep_adapter(self, benchmark, deep_nested_data: list[dict]):
+        """Pure Pydantic: TypeAdapter validation."""
         data = deep_nested_data
         adapter = TypeAdapter(list[schemas.Author])
 
@@ -173,10 +173,8 @@ class TestDeepNestedValidation:
         assert len(result[0].books) >= 1
 
     @pytest.mark.benchmark(group="deep-nested-objects")
-    def test_noop_transmuter_validate_deep_nested(
-        self, benchmark, deep_nested_data: list[dict]
-    ):
-        """NoOpMateria: Validates author with nested books (books are lazy associations)."""
+    def test_transmuter_deep_validate(self, benchmark, deep_nested_data: list[dict]):
+        """Arcanum: Validates deep object graph."""
         data = deep_nested_data
 
         def validate_all():
@@ -189,10 +187,8 @@ class TestDeepNestedValidation:
         assert isinstance(result[0].books[0], transmuters.Book)
 
     @pytest.mark.benchmark(group="deep-nested-objects")
-    def test_noop_transmuter_validate_deep_nested_list_adapter(
-        self, benchmark, deep_nested_data: list[dict]
-    ):
-        """NoOpMateria: Validates author with nested books using TypeAdapter."""
+    def test_transmuter_deep_adapter(self, benchmark, deep_nested_data: list[dict]):
+        """Arcanum: TypeAdapter validation."""
         data = deep_nested_data
         adapter = TypeAdapter(list[transmuters.Author])
 
@@ -212,8 +208,11 @@ class TestModelDumpDict:
     Uses pre-validated models to isolate dump performance.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="dump-dict")
-    def test_pydantic_dump(self, benchmark, simple_author_models: list[schemas.Author]):
+    def test_pydantic_dump_dict(
+        self, benchmark, simple_author_models: list[schemas.Author]
+    ):
         """Pure Pydantic: model_dump to dict."""
         models = simple_author_models
 
@@ -225,10 +224,10 @@ class TestModelDumpDict:
         assert "name" in result[0]
 
     @pytest.mark.benchmark(group="dump-dict")
-    def test_noop_transmuter_dump(
+    def test_transmuter_dump_dict(
         self, benchmark, simple_author_transmuters: list[transmuters.Author]
     ):
-        """NoOpMateria: model_dump to dict (excludes relationship fields)."""
+        """Arcanum: model_dump to dict."""
         models = simple_author_transmuters
 
         def dump_all():
@@ -244,11 +243,12 @@ class TestModelDumpJson:
     Compare model_dump_json() (serialization to JSON string).
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="dump-json")
     def test_pydantic_dump_json(
         self, benchmark, simple_author_models: list[schemas.Author]
     ):
-        """Pure Pydantic: model_dump_json to JSON string."""
+        """Pure Pydantic: model_dump_json."""
         models = simple_author_models
 
         def dump_all():
@@ -258,10 +258,10 @@ class TestModelDumpJson:
         assert len(result) == 100
 
     @pytest.mark.benchmark(group="dump-json")
-    def test_noop_transmuter_dump_json(
+    def test_transmuter_dump_json(
         self, benchmark, simple_author_transmuters: list[transmuters.Author]
     ):
-        """NoOpMateria: model_dump_json to JSON string."""
+        """Arcanum: model_dump_json."""
         models = simple_author_transmuters
 
         def dump_all():
@@ -276,11 +276,12 @@ class TestFromAttributesSimple:
     Compare from_attributes=True pattern (ORM-style attribute access).
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="from-attributes-simple")
-    def test_pydantic_from_attributes(
+    def test_pydantic_from_attrs(
         self, benchmark, mock_author_objects: list[MockAuthor]
     ):
-        """Pure Pydantic: model_validate with from_attributes=True."""
+        """Pure Pydantic: from_attributes validation."""
         objects = mock_author_objects
 
         def validate_all():
@@ -290,11 +291,12 @@ class TestFromAttributesSimple:
         assert len(result) == 100
         assert isinstance(result[0], schemas.Author)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="from-attributes-simple")
-    def test_pydantic_from_attributes_list_adapter(
+    def test_pydantic_from_attrs_adapter(
         self, benchmark, mock_author_objects: list[MockAuthor]
     ):
-        """Pure Pydantic: TypeAdapter with from_attributes=True."""
+        """Pure Pydantic: TypeAdapter validation."""
         objects = mock_author_objects
         adapter = TypeAdapter(list[schemas.Author])
 
@@ -306,10 +308,10 @@ class TestFromAttributesSimple:
         assert isinstance(result[0], schemas.Author)
 
     @pytest.mark.benchmark(group="from-attributes-simple")
-    def test_noop_transmuter_from_attributes(
+    def test_transmuter_from_attrs(
         self, benchmark, mock_author_objects: list[MockAuthor]
     ):
-        """NoOpMateria: model_validate with from_attributes=True."""
+        """Arcanum: from_attributes validation."""
         objects = mock_author_objects
 
         def validate_all():
@@ -320,10 +322,10 @@ class TestFromAttributesSimple:
         assert isinstance(result[0], transmuters.Author)
 
     @pytest.mark.benchmark(group="from-attributes-simple")
-    def test_noop_transmuter_from_attributes_list_adapter(
+    def test_transmuter_from_attrs_adapter(
         self, benchmark, mock_author_objects: list[MockAuthor]
     ):
-        """NoOpMateria: TypeAdapter with from_attributes=True."""
+        """Arcanum: TypeAdapter validation."""
         objects = mock_author_objects
         adapter = TypeAdapter(list[transmuters.Author])
 
@@ -340,11 +342,12 @@ class TestFromAttributesNested:
     Compare from_attributes pattern with nested objects.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="from-attributes-nested")
-    def test_pydantic_nested_from_attributes(
+    def test_pydantic_from_attrs_nested(
         self, benchmark, mock_nested_book_objects: list[MockBook]
     ):
-        """Pure Pydantic: Validates nested attributes from mock objects."""
+        """Pure Pydantic: Validates nested attributes."""
         objects = mock_nested_book_objects
 
         def validate_all():
@@ -355,11 +358,12 @@ class TestFromAttributesNested:
         assert isinstance(result[0], schemas.Book)
         assert isinstance(result[0].author, schemas.Author)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="from-attributes-nested")
-    def test_pydantic_nested_from_attributes_list_adapter(
+    def test_pydantic_from_attrs_nested_adapter(
         self, benchmark, mock_nested_book_objects: list[MockBook]
     ):
-        """Pure Pydantic: TypeAdapter validates nested attributes from mock objects."""
+        """Pure Pydantic: TypeAdapter validation."""
         objects = mock_nested_book_objects
         adapter = TypeAdapter(list[schemas.Book])
 
@@ -371,10 +375,10 @@ class TestFromAttributesNested:
         assert isinstance(result[0], schemas.Book)
 
     @pytest.mark.benchmark(group="from-attributes-nested")
-    def test_noop_transmuter_nested_from_attributes(
+    def test_transmuter_from_attrs_nested(
         self, benchmark, mock_nested_book_objects: list[MockBook]
     ):
-        """NoOpMateria: Validates nested attributes from mock objects."""
+        """Arcanum: Validates nested attributes."""
         objects = mock_nested_book_objects
 
         def validate_all():
@@ -386,10 +390,10 @@ class TestFromAttributesNested:
         assert isinstance(result[0].author.value, transmuters.Author)
 
     @pytest.mark.benchmark(group="from-attributes-nested")
-    def test_noop_transmuter_nested_from_attributes_list_adapter(
+    def test_transmuter_from_attrs_nested_adapter(
         self, benchmark, mock_nested_book_objects: list[MockBook]
     ):
-        """NoOpMateria: TypeAdapter validates nested attributes from mock objects."""
+        """Arcanum: TypeAdapter validation."""
         objects = mock_nested_book_objects
         adapter = TypeAdapter(list[transmuters.Book])
 
