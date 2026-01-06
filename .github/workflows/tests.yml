@@ -106,4 +106,5 @@ jobs:
         with:
           mode: simulation
           # Enable trace generation for flame graphs (requires Python 3.12+)
-          run: uv run pytest benchmark/ --codspeed --benchmark-warmup-iterations=5
+          # Exclude baseline tests (pure sqlalchemy/pydantic) from regression tracking
+          run: uv run pytest benchmark/ --codspeed --benchmark-warmup-iterations=5 -m "not baseline"

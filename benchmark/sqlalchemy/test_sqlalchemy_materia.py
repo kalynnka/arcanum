@@ -44,9 +44,10 @@ class TestCreateSingleAuthor:
     Each iteration creates one author from random selection.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="create-single-author")
-    def test_pure_sqlalchemy(self, benchmark, session_factory, create_author_data):
-        """Pure SQLAlchemy: Direct ORM object creation."""
+    def test_sqlalchemy_create(self, benchmark, session_factory, create_author_data):
+        """Pure SQLAlchemy: Direct ORM creation."""
         data = random.choice(create_author_data)
         author_data = {"name": data["name"], "field": data["write_field"]}
 
@@ -59,11 +60,12 @@ class TestCreateSingleAuthor:
 
         benchmark(create)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="create-single-author")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_create(
         self, benchmark, session_factory, create_author_data
     ):
-        """Pydantic + SQLAlchemy: Validate with Pydantic, then create ORM."""
+        """Pydantic + SQLAlchemy: Validate then create."""
         author_data = random.choice(create_author_data)
 
         def create():
@@ -79,10 +81,10 @@ class TestCreateSingleAuthor:
         benchmark(create)
 
     @pytest.mark.benchmark(group="create-single-author")
-    def test_arcanum_transmuter(
+    def test_arcanum_create(
         self, benchmark, arcanum_session_factory, materia, create_author_data
     ):
-        """Arcanum: Create transmuter with validation, auto-syncs to ORM."""
+        """Arcanum: Transmuter creation."""
         data = random.choice(create_author_data)
         author_data = {"name": data["name"], "field": data["write_field"]}
 
@@ -104,9 +106,12 @@ class TestCreateNestedBook:
     Each iteration creates one book with nested objects from random selection.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="create-nested-book")
-    def test_pure_sqlalchemy(self, benchmark, session_factory, create_nested_book_data):
-        """Pure SQLAlchemy: Create book with nested relationships."""
+    def test_sqlalchemy_create_nested(
+        self, benchmark, session_factory, create_nested_book_data
+    ):
+        """Pure SQLAlchemy: Create with nested objects."""
         book_data = random.choice(create_nested_book_data)
 
         def create():
@@ -126,11 +131,12 @@ class TestCreateNestedBook:
 
         benchmark(create)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="create-nested-book")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_create_nested(
         self, benchmark, session_factory, create_nested_book_data
     ):
-        """Pydantic + SQLAlchemy: Validate nested data, then create ORM objects."""
+        """Pydantic + SQLAlchemy: Validate then create."""
         book_data = random.choice(create_nested_book_data)
 
         def create():
@@ -153,10 +159,10 @@ class TestCreateNestedBook:
         benchmark(create)
 
     @pytest.mark.benchmark(group="create-nested-book")
-    def test_arcanum_transmuter(
+    def test_arcanum_create_nested(
         self, benchmark, arcanum_session_factory, materia, create_nested_book_data
     ):
-        """Arcanum: Create transmuter with nested relationships."""
+        """Arcanum: Transmuter with nested objects."""
         book_data = random.choice(create_nested_book_data)
 
         def create():
@@ -177,11 +183,12 @@ class TestReadSingleAuthor:
     Each iteration reads one randomly selected author.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="read-single-author")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_read(
         self, benchmark, session_factory, seeded_authors: list[models.Author]
     ):
-        """Pure SQLAlchemy: Query single author by ID."""
+        """Pure SQLAlchemy: Query by ID."""
         author = random.choice(seeded_authors)
         author_id = author.id
 
@@ -192,11 +199,12 @@ class TestReadSingleAuthor:
 
         benchmark(read)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="read-single-author")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_read(
         self, benchmark, session_factory, seeded_authors: list[models.Author]
     ):
-        """Pydantic + SQLAlchemy: Query then validate for response."""
+        """Pydantic + SQLAlchemy: Query then validate."""
         author = random.choice(seeded_authors)
         author_id = author.id
 
@@ -210,14 +218,14 @@ class TestReadSingleAuthor:
         benchmark(read)
 
     @pytest.mark.benchmark(group="read-single-author")
-    def test_arcanum_transmuter(
+    def test_arcanum_read(
         self,
         benchmark,
         arcanum_session_factory,
         materia,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Query returns transmuter directly."""
+        """Arcanum: Query returns transmuter."""
         author = random.choice(seeded_authors)
         author_id = author.id
 
@@ -237,14 +245,15 @@ class TestReadManyAuthors:
     Each iteration fetches 50 authors.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="read-many-authors")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_read_many(
         self,
         benchmark,
         session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Pure SQLAlchemy: Query list of authors."""
+        """Pure SQLAlchemy: Query list."""
 
         def read():
             with session_factory() as session:
@@ -258,14 +267,15 @@ class TestReadManyAuthors:
 
         benchmark(read)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="read-many-authors")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_read_many(
         self,
         benchmark,
         session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Pydantic + SQLAlchemy: Query then validate list for response."""
+        """Pydantic + SQLAlchemy: Query then validate list."""
 
         def read():
             with session_factory() as session:
@@ -282,14 +292,14 @@ class TestReadManyAuthors:
         benchmark(read)
 
     @pytest.mark.benchmark(group="read-many-authors")
-    def test_arcanum_transmuter(
+    def test_arcanum_read_many(
         self,
         benchmark,
         arcanum_session_factory,
         materia,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Query returns transmuters directly."""
+        """Arcanum: Query returns transmuters."""
 
         def read():
             with arcanum_session_factory() as session:
@@ -312,11 +322,12 @@ class TestReadNestedBook:
     Each iteration reads one randomly selected book with relationships.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="read-nested-book")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_read_nested(
         self, benchmark, session_factory, seeded_books: list[models.Book]
     ):
-        """Pure SQLAlchemy: Query books with joinedload."""
+        """Pure SQLAlchemy: Query with joinedload."""
         book = random.choice(seeded_books)
         book_id = book.id
 
@@ -337,11 +348,12 @@ class TestReadNestedBook:
 
         benchmark(read)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="read-nested-book")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_read_nested(
         self, benchmark, session_factory, seeded_books: list[models.Book]
     ):
-        """Pydantic + SQLAlchemy: Query with eager load then validate."""
+        """Pydantic + SQLAlchemy: Query then validate."""
         book = random.choice(seeded_books)
         book_id = book.id
 
@@ -364,14 +376,14 @@ class TestReadNestedBook:
         benchmark(read)
 
     @pytest.mark.benchmark(group="read-nested-book")
-    def test_arcanum_transmuter(
+    def test_arcanum_read_nested(
         self,
         benchmark,
         arcanum_session_factory,
         materia,
         seeded_books: list[models.Book],
     ):
-        """Arcanum: Query with eager load returns transmuter."""
+        """Arcanum: Query with eager load."""
         book = random.choice(seeded_books)
         book_id = book.id
 
@@ -400,11 +412,12 @@ class TestUpdateSingleAuthor:
     Each iteration updates one randomly selected author.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="update-single-author")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_update(
         self, benchmark, session_factory, seeded_authors: list[models.Author]
     ):
-        """Pure SQLAlchemy: Direct ORM attribute update."""
+        """Pure SQLAlchemy: Direct ORM update."""
         author = random.choice(seeded_authors)
         author_id = author.id
 
@@ -418,11 +431,12 @@ class TestUpdateSingleAuthor:
 
         benchmark(update)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="update-single-author")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_update(
         self, benchmark, session_factory, seeded_authors: list[models.Author]
     ):
-        """Pydantic + SQLAlchemy: Validate update data then apply to ORM."""
+        """Pydantic + SQLAlchemy: Validate then update."""
         author = random.choice(seeded_authors)
         author_id = author.id
         update_data = {"name": "Updated Name", "write_field": "Physics"}
@@ -443,14 +457,14 @@ class TestUpdateSingleAuthor:
         benchmark(update)
 
     @pytest.mark.benchmark(group="update-single-author")
-    def test_arcanum_transmuter(
+    def test_arcanum_update(
         self,
         benchmark,
         arcanum_session_factory,
         materia,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Update transmuter, changes sync to ORM."""
+        """Arcanum: Transmuter update."""
         author = random.choice(seeded_authors)
         author_id = author.id
         update_data = {"name": "Updated Name", "write_field": "Physics"}
@@ -475,14 +489,15 @@ class TestUpdateManyAuthors:
     Each iteration updates 50 authors.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="update-many-authors")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_update_many(
         self,
         benchmark,
         session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Pure SQLAlchemy: Bulk update via query."""
+        """Pure SQLAlchemy: Bulk update."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def update():
@@ -497,14 +512,15 @@ class TestUpdateManyAuthors:
 
         benchmark(update)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="update-many-authors")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_update_many(
         self,
         benchmark,
         session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Pydantic + SQLAlchemy: Validate each update then apply."""
+        """Pydantic + SQLAlchemy: Validate then update."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def update():
@@ -527,14 +543,14 @@ class TestUpdateManyAuthors:
         benchmark(update)
 
     @pytest.mark.benchmark(group="update-many-authors")
-    def test_arcanum_transmuter(
+    def test_arcanum_update_many(
         self,
         benchmark,
         arcanum_session_factory,
         materia,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Bulk update via transmuters."""
+        """Arcanum: Bulk update."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         AuthorUpdate = Author.Update
 
@@ -562,14 +578,15 @@ class TestSerializeToDict:
     Each iteration serializes 50 authors.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="serialize-dict")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_serialize_dict(
         self,
         benchmark,
         session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Pure SQLAlchemy: Manual dict conversion."""
+        """Pure SQLAlchemy: Manual dict."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
@@ -581,14 +598,15 @@ class TestSerializeToDict:
         result = benchmark(serialize)
         assert len(result) == BATCH_SIZE
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="serialize-dict")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_serialize_dict(
         self,
         benchmark,
         session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Pydantic + SQLAlchemy: Validate then model_dump."""
+        """Pydantic + SQLAlchemy: Validate then dump."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
@@ -602,14 +620,14 @@ class TestSerializeToDict:
         assert len(result) == BATCH_SIZE
 
     @pytest.mark.benchmark(group="serialize-dict")
-    def test_arcanum_transmuter(
+    def test_arcanum_serialize_dict(
         self,
         benchmark,
         arcanum_session_factory,
         materia,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Transmuter model_dump."""
+        """Arcanum: model_dump."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
@@ -630,8 +648,9 @@ class TestSerializeToJson:
     Each iteration serializes 50 authors to JSON.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="serialize-json")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_serialize_json(
         self,
         benchmark,
         session_factory,
@@ -652,8 +671,9 @@ class TestSerializeToJson:
         result = benchmark(serialize)
         assert len(result) > 0
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="serialize-json")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_serialize_json(
         self,
         benchmark,
         session_factory,
@@ -676,7 +696,7 @@ class TestSerializeToJson:
         assert len(result) > 0
 
     @pytest.mark.benchmark(group="serialize-json")
-    def test_arcanum_transmuter(
+    def test_arcanum_serialize_json(
         self,
         benchmark,
         arcanum_session_factory,
@@ -709,8 +729,9 @@ class TestRoundtripAuthor:
     Each iteration performs one roundtrip on a randomly selected author.
     """
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="roundtrip-author")
-    def test_pure_sqlalchemy(
+    def test_sqlalchemy_roundtrip(
         self, benchmark, session_factory, seeded_authors: list[models.Author]
     ):
         """Pure SQLAlchemy: Load, modify, flush, rollback."""
@@ -727,8 +748,9 @@ class TestRoundtripAuthor:
 
         benchmark(roundtrip)
 
+    @pytest.mark.baseline
     @pytest.mark.benchmark(group="roundtrip-author")
-    def test_pydantic_then_sqlalchemy(
+    def test_pydantic_sqlalchemy_roundtrip(
         self, benchmark, session_factory, seeded_authors: list[models.Author]
     ):
         """Pydantic + SQLAlchemy: Load, validate input, apply, flush."""
@@ -751,7 +773,7 @@ class TestRoundtripAuthor:
         benchmark(roundtrip)
 
     @pytest.mark.benchmark(group="roundtrip-author")
-    def test_arcanum_transmuter(
+    def test_arcanum_roundtrip(
         self,
         benchmark,
         arcanum_session_factory,
