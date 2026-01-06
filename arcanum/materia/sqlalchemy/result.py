@@ -168,16 +168,16 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
     def __next__(self) -> Row[_TP]:
         return self._adapt(self._next_impl())
 
-    def partitions(self, size: int | None = None) -> Iterator[tuple[Row[_TP]]]:
+    def partitions(self, size: int | None = None) -> Iterator[Sequence[Row[_TP]]]:
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                yield tuple(self._adapt(row) for row in partition)
+                yield [self._adapt(row) for row in partition]
             else:
                 break
 
-    def fetchall(self) -> tuple[Row[_TP]]:
-        return tuple(self._adapt(row) for row in self._allrows())
+    def fetchall(self) -> Sequence[Row[_TP]]:
+        return [self._adapt(row) for row in self._allrows()]
 
     def fetchone(self) -> Optional[Row[_TP]]:
         row = self._onerow_getter(self)
@@ -186,11 +186,11 @@ class AdaptedResult(_WithKeys, AdaptedCommon[Row[_TP]]):
         else:
             return self._adapt(row)
 
-    def fetchmany(self, size: int | None = None) -> tuple[Row[_TP]]:
-        return tuple(self._adapt(row) for row in self._manyrow_getter(size))
+    def fetchmany(self, size: int | None = None) -> Sequence[Row[_TP]]:
+        return [self._adapt(row) for row in self._manyrow_getter(size)]
 
-    def all(self) -> tuple[Row[_TP]]:
-        return tuple(self._adapt(row) for row in self._allrows())
+    def all(self) -> Sequence[Row[_TP]]:
+        return [self._adapt(row) for row in self._allrows()]
 
     def first(self) -> Optional[Row[_TP]]:
         return (
@@ -369,24 +369,22 @@ class AdaptedScalarResult(ScalarResult[_R]):
     def __next__(self) -> _R:
         return self._adapt_scalar(self._next_impl())
 
-    def partitions(self, size: int | None = None) -> Iterator[tuple[_R]]:
+    def partitions(self, size: int | None = None) -> Iterator[Sequence[_R]]:
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                yield tuple(self._adapt_scalar(scalar) for scalar in partition)
+                yield [self._adapt_scalar(scalar) for scalar in partition]
             else:
                 break
 
-    def fetchall(self) -> tuple[_R]:
-        return tuple(self._adapt_scalar(scalar) for scalar in self._allrows())
+    def fetchall(self) -> Sequence[_R]:
+        return [self._adapt_scalar(scalar) for scalar in self._allrows()]
 
-    def fetchmany(self, size: int | None = None) -> tuple[_R]:
-        return tuple(
-            self._adapt_scalar(scalar) for scalar in self._manyrow_getter(size)
-        )
+    def fetchmany(self, size: int | None = None) -> Sequence[_R]:
+        return [self._adapt_scalar(scalar) for scalar in self._manyrow_getter(size)]
 
-    def all(self) -> tuple[_R]:
-        return tuple(self._adapt_scalar(scalar) for scalar in self._allrows())
+    def all(self) -> Sequence[_R]:
+        return [self._adapt_scalar(scalar) for scalar in self._allrows()]
 
     def first(self) -> _R | None:
         return (
@@ -569,7 +567,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         while True:
             partition = self._manyrow_getter(self, size)
             if partition:
-                yield tuple(
+                yield list(
                     dict(zip(row.keys(), self._adapt(row.values())))
                     for row in partition
                 )
@@ -584,14 +582,14 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
             return dict(zip(row.keys(), self._adapt(row.values())))
 
     def fetchmany(self, size: int | None = None) -> Sequence[dict[str, Any]]:
-        return tuple(
+        return list(
             dict(zip(row.keys(), self._adapt(row.values())))
             for row in self._manyrow_getter(size)
         )
 
     def fetchall(self) -> Sequence[dict[str, Any]]:
         """A synonym for the :meth:`AdaptedMappingResult.all` method."""
-        return tuple(
+        return list(
             dict(zip(row.keys(), self._adapt(row.values()))) for row in self._allrows()
         )
 
@@ -609,7 +607,7 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
         )
 
     def all(self) -> Sequence[dict[str, Any]]:
-        return tuple(
+        return list(
             dict(zip(row.keys(), self._adapt(row.values()))) for row in self._allrows()
         )
 
@@ -633,11 +631,6 @@ class AdaptedMappingResult(_WithKeys, AdaptedCommon[RowMapping]):
             )
             else None
         )
-
-
-# =============================================================================
-# Async Adapted Result Classes
-# =============================================================================
 
 
 class AsyncAdaptedCommon(FilterResult[_R]):
@@ -764,14 +757,14 @@ class AsyncAdaptedResult(_WithKeys, AsyncAdaptedCommon[Row[_TP]]):
         while True:
             partition = await greenlet_spawn(getter, self, size)
             if partition:
-                yield tuple(self._adapt(row) for row in partition)
+                yield [self._adapt(row) for row in partition]
             else:
                 break
 
     async def fetchall(self) -> Sequence[Row[_TP]]:
         """A synonym for the :meth:`AsyncAdaptedResult.all` method."""
         rows = await greenlet_spawn(self._allrows)
-        return tuple(self._adapt(row) for row in rows)
+        return [self._adapt(row) for row in rows]
 
     async def fetchone(self) -> Optional[Row[_TP]]:
         """Fetch one row."""
@@ -784,12 +777,12 @@ class AsyncAdaptedResult(_WithKeys, AsyncAdaptedCommon[Row[_TP]]):
     async def fetchmany(self, size: int | None = None) -> Sequence[Row[_TP]]:
         """Fetch many rows."""
         rows = await greenlet_spawn(self._manyrow_getter, self, size)
-        return tuple(self._adapt(row) for row in rows)
+        return [self._adapt(row) for row in rows]
 
     async def all(self) -> Sequence[Row[_TP]]:
         """Return all rows in a list."""
         rows = await greenlet_spawn(self._allrows)
-        return tuple(self._adapt(row) for row in rows)
+        return [self._adapt(row) for row in rows]
 
     def __aiter__(self) -> AsyncAdaptedResult[_TP]:
         return self
@@ -948,24 +941,24 @@ class AsyncAdaptedScalarResult(AsyncAdaptedCommon[_R]):
         while True:
             partition = await greenlet_spawn(getter, self, size)
             if partition:
-                yield tuple(self._adapt_scalar(scalar) for scalar in partition)
+                yield [self._adapt_scalar(scalar) for scalar in partition]
             else:
                 break
 
     async def fetchall(self) -> Sequence[_R]:
         """A synonym for the :meth:`AsyncAdaptedScalarResult.all` method."""
         scalars = await greenlet_spawn(self._allrows)
-        return tuple(self._adapt_scalar(scalar) for scalar in scalars)
+        return [self._adapt_scalar(scalar) for scalar in scalars]
 
     async def fetchmany(self, size: int | None = None) -> Sequence[_R]:
         """Fetch many objects."""
         scalars = await greenlet_spawn(self._manyrow_getter, self, size)
-        return tuple(self._adapt_scalar(scalar) for scalar in scalars)
+        return [self._adapt_scalar(scalar) for scalar in scalars]
 
     async def all(self) -> Sequence[_R]:
         """Return all scalar values in a list."""
         scalars = await greenlet_spawn(self._allrows)
-        return tuple(self._adapt_scalar(scalar) for scalar in scalars)
+        return [self._adapt_scalar(scalar) for scalar in scalars]
 
     def __aiter__(self) -> AsyncAdaptedScalarResult[_R]:
         return self
@@ -1057,7 +1050,7 @@ class AsyncAdaptedMappingResult(_WithKeys, AsyncAdaptedCommon[RowMapping]):
         while True:
             partition = await greenlet_spawn(getter, self, size)
             if partition:
-                yield tuple(
+                yield list(
                     dict(zip(row.keys(), self._adapt(row.values())))
                     for row in partition
                 )
@@ -1075,17 +1068,17 @@ class AsyncAdaptedMappingResult(_WithKeys, AsyncAdaptedCommon[RowMapping]):
     async def fetchmany(self, size: int | None = None) -> Sequence[dict[str, Any]]:
         """Fetch many rows."""
         rows = await greenlet_spawn(self._manyrow_getter, self, size)
-        return tuple(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
+        return list(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
 
     async def fetchall(self) -> Sequence[dict[str, Any]]:
         """A synonym for the :meth:`AsyncAdaptedMappingResult.all` method."""
         rows = await greenlet_spawn(self._allrows)
-        return tuple(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
+        return list(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
 
     async def all(self) -> Sequence[dict[str, Any]]:
         """Return all rows in a list."""
         rows = await greenlet_spawn(self._allrows)
-        return tuple(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
+        return list(dict(zip(row.keys(), self._adapt(row.values()))) for row in rows)
 
     def __aiter__(self) -> AsyncAdaptedMappingResult:
         return self

@@ -22,7 +22,7 @@ from sqlalchemy.exc import NoResultFound
 
 from arcanum.base import BaseTransmuter
 from arcanum.materia.sqlalchemy import Session
-from tests.schemas import Author, Book, BookCategory, Category, Publisher
+from tests.transmuters import Author, Book, BookCategory, Category, Publisher
 
 
 class TestSessionContextManagement:

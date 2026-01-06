@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import Engine, select
 
 from arcanum.materia.sqlalchemy import Session
-from tests.schemas import Author, Book, Publisher
+from tests.transmuters import Author, Book, Publisher
 
 
 class TestValidationContext:

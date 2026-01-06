@@ -46,7 +46,7 @@ from sqlalchemy import Engine, select
 
 from arcanum.association import Relation
 from arcanum.materia.sqlalchemy import Session
-from tests.schemas import (
+from tests.transmuters import (
     Company,
     Department,
     Employee,

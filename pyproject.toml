@@ -44,16 +44,16 @@ Homepage = "https://github.com/kalynnka/arcanum"
 Repository = "https://github.com/kalynnka/arcanum"
 Issues = "https://github.com/kalynnka/arcanum/issues"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
     "pytest-codspeed>=4.2.0",
+    "pytest-xdist>=3.5.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
-    "asyncpg>=0.30.0",
-    "psycopg2-binary>=2.9.11",
+    "aiosqlite>=0.19.0",
     "pytest-benchmark>=5.2.3",
 ]
 
@@ -64,7 +64,10 @@ target-version = "py311"
 asyncio_mode = "auto"
 asyncio_default_test_loop_scope = "session"
 asyncio_default_fixture_loop_scope = "session"
-codspeed_instrument = "auto"
+addopts = "--benchmark-disable"
+
+[tool.pytest-benchmark]
+warmup_iterations = 5
 
 [tool.black]
 line-length = 88

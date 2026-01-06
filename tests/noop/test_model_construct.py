@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tests.schemas import Author, Book, Publisher
+from tests.transmuters import Author, Book, Publisher
 
 """Test model_construct with NoOpMateria.
 

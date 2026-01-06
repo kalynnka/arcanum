@@ -22,7 +22,7 @@ from sqlalchemy.orm import joinedload, raiseload, selectinload
 from arcanum.association import Relation, RelationCollection
 from arcanum.materia.sqlalchemy import Session
 from tests import models
-from tests.schemas import (
+from tests.transmuters import (
     Author,
     Book,
     BookDetail,
@@ -622,9 +622,7 @@ class TestEagerLoading:
                 select(Book)
                 .where(Book["id"] == book1.id)
                 .options(
-                    selectinload(models.Book.categories).selectinload(
-                        models.Category.books
-                    )
+                    selectinload(Book["categories"]).selectinload(Category["books"])
                 )
             )
             loaded_book = session.execute(stmt).scalars().one()
@@ -855,6 +853,7 @@ class TestComplexRelationshipQueries:
 
             # All relationships should be loaded
             assert loaded_book.author.value.name == "Nested Load Author"
+            assert loaded_book.detail.value
             assert loaded_book.detail.value.pages == 250
             assert loaded_book.publisher.value.name == "Nested Load Pub"
 
@@ -1314,9 +1313,7 @@ class TestSelectinloadWithORMRelationships:
                     select(Author)
                     .where(Author["id"] == author.id)
                     .options(
-                        selectinload(models.Author.books).selectinload(
-                            models.Book.reviews
-                        )
+                        selectinload(Author["books"]).selectinload(Book["reviews"])
                     )
                 )
                 loaded_author = session.execute(stmt).scalars().one()
@@ -1378,6 +1375,7 @@ class TestSelectinloadWithORMRelationships:
             # Verify all relationships are loaded
             assert loaded_book.author.value.name == "ORM Multi Selectin Author"
             assert loaded_book.publisher.value.name == "ORM Multi Selectin Pub"
+            assert loaded_book.detail.value
             assert loaded_book.detail.value.isbn == "978-MULTI-001"
             assert len(loaded_book.categories) == 2
 

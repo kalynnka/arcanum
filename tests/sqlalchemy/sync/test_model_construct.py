@@ -17,7 +17,7 @@ from sqlalchemy import Engine, select
 from arcanum.base import BaseTransmuter, validation_context
 from arcanum.materia.sqlalchemy import Session, SqlalchemyMateria
 from tests import models
-from tests.schemas import Author, Book
+from tests.transmuters import Author, Book
 
 
 class TestModelConstructWithProvider:
