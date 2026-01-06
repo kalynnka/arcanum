@@ -689,7 +689,7 @@ class TestSerializeToJson:
             with session_factory() as session:
                 stmt = select(models.Author).where(models.Author.id.in_(author_ids))
                 authors = session.scalars(stmt).all()
-                validated = [schemas.AuthorFlat.model_validate(a) for a in authors]
+                validated = adapter.validate_python(authors)
                 return adapter.dump_json(validated)
 
         result = benchmark(serialize)
@@ -719,6 +719,97 @@ class TestSerializeToJson:
 
         result = benchmark(serialize)
         assert len(result) > 0
+
+
+class TestScalarsOnlySerializeToDict:
+    """
+    Benchmark scalar-only model_dump() with SQLAlchemy materia.
+
+    Uses ORM objects converted to transmuters, then dumped to dict.
+    Tests the serialization path without relationship overhead.
+    """
+
+    @pytest.mark.baseline
+    @pytest.mark.benchmark(group="serialize-scalars-only-dict")
+    def test_pydantic_sqlalchemy_scalars_dump_dict(
+        self, benchmark, session_factory, seeded_authors: list[models.Author]
+    ):
+        """Pydantic + SQLAlchemy: Load ORM, validate to flat model, dump to dict."""
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
+
+        def dump_all():
+            with session_factory() as session:
+                authors = [session.get(models.Author, aid) for aid in author_ids]
+                validated = [schemas.AuthorFlat.model_validate(a) for a in authors]
+                return [v.model_dump() for v in validated]
+
+        result = benchmark(dump_all)
+        assert len(result) == BATCH_SIZE
+        assert "name" in result[0]
+
+    @pytest.mark.benchmark(group="serialize-scalars-only-dict")
+    def test_arcanum_scalars_dump_dict(
+        self,
+        benchmark,
+        arcanum_session_factory,
+        materia,
+        seeded_authors: list[models.Author],
+    ):
+        """Arcanum: Load transmuter, dump to dict (excluding relationships)."""
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
+
+        def dump_all():
+            with arcanum_session_factory() as session:
+                authors = [session.get(Author, aid) for aid in author_ids]
+                return [a.model_dump(exclude={"books"}) for a in authors]
+
+        result = benchmark(dump_all)
+        assert len(result) == BATCH_SIZE
+        assert "name" in result[0]
+
+
+class TestScalarsOnlySerializeToJson:
+    """
+    Benchmark scalar-only model_dump_json() with SQLAlchemy materia.
+
+    Uses ORM objects converted to transmuters, then dumped to JSON.
+    """
+
+    @pytest.mark.baseline
+    @pytest.mark.benchmark(group="serialize-scalars-only-json")
+    def test_pydantic_sqlalchemy_scalars_dump_json(
+        self, benchmark, session_factory, seeded_authors: list[models.Author]
+    ):
+        """Pydantic + SQLAlchemy: Load ORM, validate to flat model, dump to JSON."""
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
+
+        def dump_all():
+            with session_factory() as session:
+                authors = [session.get(models.Author, aid) for aid in author_ids]
+                validated = [schemas.AuthorFlat.model_validate(a) for a in authors]
+                return [v.model_dump_json() for v in validated]
+
+        result = benchmark(dump_all)
+        assert len(result) == BATCH_SIZE
+
+    @pytest.mark.benchmark(group="serialize-scalars-only-json")
+    def test_arcanum_scalars_dump_json(
+        self,
+        benchmark,
+        arcanum_session_factory,
+        materia,
+        seeded_authors: list[models.Author],
+    ):
+        """Arcanum: Load transmuter, dump to JSON (excluding relationships)."""
+        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
+
+        def dump_all():
+            with arcanum_session_factory() as session:
+                authors = [session.get(Author, aid) for aid in author_ids]
+                return [a.model_dump_json(exclude={"books"}) for a in authors]
+
+        result = benchmark(dump_all)
+        assert len(result) == BATCH_SIZE
 
 
 class TestRoundtripAuthor:
@@ -793,94 +884,3 @@ class TestRoundtripAuthor:
                 session.rollback()
 
         benchmark(roundtrip)
-
-
-class TestScalarsOnlyDumpDict:
-    """
-    Benchmark scalar-only model_dump() with SQLAlchemy materia.
-
-    Uses ORM objects converted to transmuters, then dumped to dict.
-    Tests the serialization path without relationship overhead.
-    """
-
-    @pytest.mark.baseline
-    @pytest.mark.benchmark(group="sqlalchemy-scalars-dump-dict")
-    def test_pydantic_sqlalchemy_scalars_dump_dict(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
-    ):
-        """Pydantic + SQLAlchemy: Load ORM, validate to flat model, dump to dict."""
-        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
-
-        def dump_all():
-            with session_factory() as session:
-                authors = [session.get(models.Author, aid) for aid in author_ids]
-                validated = [schemas.AuthorFlat.model_validate(a) for a in authors]
-                return [v.model_dump() for v in validated]
-
-        result = benchmark(dump_all)
-        assert len(result) == BATCH_SIZE
-        assert "name" in result[0]
-
-    @pytest.mark.benchmark(group="sqlalchemy-scalars-dump-dict")
-    def test_arcanum_scalars_dump_dict(
-        self,
-        benchmark,
-        arcanum_session_factory,
-        materia,
-        seeded_authors: list[models.Author],
-    ):
-        """Arcanum: Load transmuter, dump to dict (excluding relationships)."""
-        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
-
-        def dump_all():
-            with arcanum_session_factory() as session:
-                authors = [session.get(Author, aid) for aid in author_ids]
-                return [a.model_dump(exclude={"books"}) for a in authors]
-
-        result = benchmark(dump_all)
-        assert len(result) == BATCH_SIZE
-        assert "name" in result[0]
-
-
-class TestScalarsOnlyDumpJson:
-    """
-    Benchmark scalar-only model_dump_json() with SQLAlchemy materia.
-
-    Uses ORM objects converted to transmuters, then dumped to JSON.
-    """
-
-    @pytest.mark.baseline
-    @pytest.mark.benchmark(group="sqlalchemy-scalars-dump-json")
-    def test_pydantic_sqlalchemy_scalars_dump_json(
-        self, benchmark, session_factory, seeded_authors: list[models.Author]
-    ):
-        """Pydantic + SQLAlchemy: Load ORM, validate to flat model, dump to JSON."""
-        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
-
-        def dump_all():
-            with session_factory() as session:
-                authors = [session.get(models.Author, aid) for aid in author_ids]
-                validated = [schemas.AuthorFlat.model_validate(a) for a in authors]
-                return [v.model_dump_json() for v in validated]
-
-        result = benchmark(dump_all)
-        assert len(result) == BATCH_SIZE
-
-    @pytest.mark.benchmark(group="sqlalchemy-scalars-dump-json")
-    def test_arcanum_scalars_dump_json(
-        self,
-        benchmark,
-        arcanum_session_factory,
-        materia,
-        seeded_authors: list[models.Author],
-    ):
-        """Arcanum: Load transmuter, dump to JSON (excluding relationships)."""
-        author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
-
-        def dump_all():
-            with arcanum_session_factory() as session:
-                authors = [session.get(Author, aid) for aid in author_ids]
-                return [a.model_dump_json(exclude={"books"}) for a in authors]
-
-        result = benchmark(dump_all)
-        assert len(result) == BATCH_SIZE
