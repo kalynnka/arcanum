@@ -116,6 +116,9 @@ class SqlalchemyMateria(BaseMateria):
             raise InvalidRequestError(
                 f"""Failed to load relation '{association.field_name}' of {association.__instance__.__class__.__name__} for the relation's loading strategy is set to 'raise' in sqlalchemy. Specify the relationship with selectinload in statement options or change the loading strategy to 'select' or 'selectin' instead."""
             ) from invalid_request_error
+        except Exception as exc:
+            association.__loaded__ = False
+            raise exc
 
     def aload_association(self, association: Association) -> Any:
         return greenlet_spawn(self.load_association, association)
