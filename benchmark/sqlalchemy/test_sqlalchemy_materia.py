@@ -586,7 +586,11 @@ class TestSerializeToDict:
 
         def serialize():
             with session_factory() as session:
-                stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+                stmt = (
+                    select(models.Author)
+                    .where(models.Author.id.in_(author_ids))
+                    .options(selectinload(models.Author.books))
+                )
                 authors = session.scalars(stmt).all()
                 return [{"id": a.id, "name": a.name, "field": a.field} for a in authors]
 
@@ -604,7 +608,11 @@ class TestSerializeToDict:
         """Pydantic + SQLAlchemy: Validate then dump."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         with session_factory() as session:
-            stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+            stmt = (
+                select(models.Author)
+                .where(models.Author.id.in_(author_ids))
+                .options(selectinload(models.Author.books))
+            )
             authors = session.scalars(stmt).all()
             validated = [schemas.Author.model_validate(a) for a in authors]
 
@@ -624,7 +632,11 @@ class TestSerializeToDict:
         """Arcanum: model_dump."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         with arcanum_session_factory() as session:
-            stmt = select(Author).where(Author["id"].in_(author_ids))
+            stmt = (
+                select(Author)
+                .where(Author["id"].in_(author_ids))
+                .options(selectinload(Author["books"]))
+            )
             validated = session.scalars(stmt).all()
 
         def serialize():
@@ -654,13 +666,17 @@ class TestSerializeToJson:
         import json
 
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
+        with session_factory() as session:
+            stmt = (
+                select(models.Author)
+                .where(models.Author.id.in_(author_ids))
+                .options(selectinload(models.Author.books))
+            )
+            authors = session.scalars(stmt).all()
 
         def serialize():
-            with session_factory() as session:
-                stmt = select(models.Author).where(models.Author.id.in_(author_ids))
-                authors = session.scalars(stmt).all()
-                data = [{"id": a.id, "name": a.name, "field": a.field} for a in authors]
-                return json.dumps(data)
+            data = [{"id": a.id, "name": a.name, "field": a.field} for a in authors]
+            return json.dumps(data)
 
         result = benchmark(serialize)
         assert len(result) > 0
@@ -679,7 +695,11 @@ class TestSerializeToJson:
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         adapter = TypeAdapter(list[schemas.Author])
         with session_factory() as session:
-            stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+            stmt = (
+                select(models.Author)
+                .where(models.Author.id.in_(author_ids))
+                .options(selectinload(models.Author.books))
+            )
             authors = session.scalars(stmt).all()
             validated = adapter.validate_python(authors)
 
@@ -704,7 +724,11 @@ class TestSerializeToJson:
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         adapter = TypeAdapter(list[Author])
         with arcanum_session_factory() as session:
-            stmt = select(Author).where(Author["id"].in_(author_ids))
+            stmt = (
+                select(Author)
+                .where(Author["id"].in_(author_ids))
+                .options(selectinload(Author["books"]))
+            )
             validated = session.scalars(stmt).all()
 
         def serialize():
@@ -732,7 +756,11 @@ class TestScalarsOnlySerializeToDict:
         """Pydantic + SQLAlchemy: Load ORM, validate to full model, dump to dict."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         with session_factory() as session:
-            stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+            stmt = (
+                select(models.Author)
+                .where(models.Author.id.in_(author_ids))
+                .options(selectinload(models.Author.books))
+            )
             authors = session.scalars(stmt).all()
             validated = [schemas.Author.model_validate(a) for a in authors]
 
@@ -753,7 +781,11 @@ class TestScalarsOnlySerializeToDict:
         """Arcanum: Load transmuter, dump to dict (excluding relationships)."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         with arcanum_session_factory() as session:
-            stmt = select(Author).where(Author["id"].in_(author_ids))
+            stmt = (
+                select(Author)
+                .where(Author["id"].in_(author_ids))
+                .options(selectinload(Author["books"]))
+            )
             validated = session.scalars(stmt).all()
 
         def dump_all():
@@ -779,7 +811,11 @@ class TestScalarsOnlySerializeToJson:
         """Pydantic + SQLAlchemy: Load ORM, validate to full model, dump to JSON."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         with session_factory() as session:
-            stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+            stmt = (
+                select(models.Author)
+                .where(models.Author.id.in_(author_ids))
+                .options(selectinload(models.Author.books))
+            )
             authors = session.scalars(stmt).all()
             validated = [schemas.Author.model_validate(a) for a in authors]
 
@@ -799,7 +835,11 @@ class TestScalarsOnlySerializeToJson:
         """Arcanum: Load transmuter, dump to JSON (excluding relationships)."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         with arcanum_session_factory() as session:
-            stmt = select(Author).where(Author["id"].in_(author_ids))
+            stmt = (
+                select(Author)
+                .where(Author["id"].in_(author_ids))
+                .options(selectinload(Author["books"]))
+            )
             validated = session.scalars(stmt).all()
 
         def dump_all():

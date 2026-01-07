@@ -328,11 +328,11 @@ class BaseTransmuter(BaseModel, metaclass=TransmuterMetaclass):
     __transmuter_provided__: Optional[TransmuterProxied] = NoInitField(init=False)
     __transmuter_revalidating__: bool = NoInitField(init=False)
 
-    # def __getattribute__(self, name: str) -> Any:
-    #     value = super().__getattribute__(name)
-    #     if isinstance(value, Association):
-    #         value.prepare(self, name)
-    # return value
+    def __getattribute__(self, name: str) -> Any:
+        value = super().__getattribute__(name)
+        if isinstance(value, Association):
+            value.prepare(self, name)
+        return value
 
     def __getattr__(self, name: str) -> Any:
         # only called when attribute not found in normal places
@@ -384,10 +384,6 @@ class BaseTransmuter(BaseModel, metaclass=TransmuterMetaclass):
             instance = handler(data)
             object.__setattr__(instance, "__transmuter_provided__", None)
             object.__setattr__(instance, "__transmuter_revalidating__", False)
-            for name in cls.model_associations.keys():
-                association = getattr(instance, name)
-                if isinstance(association, Association):
-                    association.prepare(instance, name)
             return instance
 
         # Handle provider with matching data type
@@ -403,10 +399,6 @@ class BaseTransmuter(BaseModel, metaclass=TransmuterMetaclass):
                 object.__setattr__(instance, "__transmuter_provided__", data)
                 object.__setattr__(instance, "__transmuter_revalidating__", False)
                 data.transmuter_proxy = instance
-                for name in cls.model_associations.keys():
-                    association = getattr(instance, name)
-                    if isinstance(association, Association):
-                        association.prepare(instance, name)
                 instance = materia.transmuter_after_validator(instance, info)
 
             if not cached:
@@ -435,12 +427,11 @@ class BaseTransmuter(BaseModel, metaclass=TransmuterMetaclass):
             object.__setattr__(instance, "__transmuter_provided__", None)
             object.__setattr__(instance, "__transmuter_revalidating__", False)
 
-        for name in cls.model_associations.keys():
+        for name in cls.model_associations.keys() & instance.model_fields_set:
             association = getattr(instance, name)
             if isinstance(association, Association):
                 association.prepare(instance, name)
-                if name in instance.model_fields_set:
-                    association._load()
+                association._load()
 
         return instance
 
