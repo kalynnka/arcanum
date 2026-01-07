@@ -25,7 +25,7 @@ from typing import (
 from pydantic import BaseModel, Field, GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import core_schema
 
-from arcanum.materia.base import active_materia
+from arcanum.materia.base import NoOpMateria, active_materia
 from arcanum.utils import get_cached_adapter
 
 if TYPE_CHECKING:
@@ -39,6 +39,8 @@ Optional_T = TypeVar("Optional_T", bound="BaseTransmuter | Optional[BaseTransmut
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+_noop_materia = NoOpMateria()
 
 
 def is_association(t: type) -> bool:
@@ -57,7 +59,6 @@ def is_association(t: type) -> bool:
 
 
 class Association(Generic[A]):
-    __generic__: Type[A]
     __instance__: BaseTransmuter | None
     __loaded__: bool
     __payloads__: A | None
@@ -112,7 +113,7 @@ class Association(Generic[A]):
                 instance.__payloads__ = handler(instance.__payloads__)
             else:
                 instance = cls(handler(value))
-            instance.__generic__ = generic_type
+            instance.__dict__["__generic__"] = generic_type  # set to property cache
             instance.field_name = info.field_name
             instance = materia.association_after_validator(instance, info)
 
@@ -147,6 +148,17 @@ class Association(Generic[A]):
     @cached_property
     def __validator__(self) -> TypeAdapter[A]:
         return get_cached_adapter(self.__generic__)
+
+    @cached_property
+    def __generic__(self) -> Type[A]:
+        annotation = self.field_info.annotation
+        if isinstance(annotation, ForwardRef):
+            actual_type = annotation.__forward_value__
+            if actual_type is None:
+                actual_type = annotation._evaluate(globals(), locals(), set())
+            return get_args(actual_type)[0]
+        else:
+            return get_args(annotation)[0]
 
     @cached_property
     def used_name(self) -> str:
@@ -184,19 +196,9 @@ class Association(Generic[A]):
         if self.__instance__ is not None:
             return
 
+        self.__instance__ = instance
         self.field_name = field_name
         self.field_info = type(instance).model_fields[field_name]
-
-        self.__instance__ = instance
-
-        annotation = self.field_info.annotation
-        if isinstance(annotation, ForwardRef):
-            actual_type = annotation.__forward_value__
-            if actual_type is None:
-                actual_type = annotation._evaluate(globals(), locals(), set())
-            self.__generic__ = get_args(actual_type)[0]
-        else:
-            self.__generic__ = get_args(annotation)[0]
 
     def bless(self, value: Any) -> Any:
         """Bless the value into the generic type."""
@@ -254,15 +256,6 @@ class Relation(Association[Optional_T]):
             return  # No provider, skip syncing
         setattr(self.__instance_provider__, self.used_name, object)
 
-    def prepare(self, instance: BaseTransmuter, field_name: str):
-        super().prepare(instance, field_name)
-        if (
-            self.__instance_provider__
-            and not self.__loaded__
-            and self.__payloads__ is not None
-        ):
-            self.__provided__ = self.__payloads__.__transmuter_provided__
-
     @staticmethod
     def ensure_loaded(
         func: Callable[Concatenate[Relation[Optional_T], P], R],
@@ -281,16 +274,12 @@ class Relation(Association[Optional_T]):
 
         active_materia.get().load_association(self)
 
-        # A: No provided, None
-        # B: provided value is None
-        if not self.__provided__:
-            return self.__payloads__
-
         if self.__payloads__ is not None and self.__payloads__.__transmuter_provided__:
             # Already loaded by ORM (e.g., selectinload), no need to set back
             self.__provided__ = self.__payloads__.__transmuter_provided__
         else:
-            self.__payloads__ = self.bless(self.__provided__)
+            if self.__provided__:
+                self.__payloads__ = self.bless(self.__provided__)
 
         self.__loaded__ = True
 
@@ -402,15 +391,6 @@ class RelationCollection(list[T], Association[T]):
             else:
                 return self.__construct__(value)
 
-    def prepare(self, instance: BaseTransmuter, field_name: str):
-        super().prepare(instance, field_name)
-        if self.__payloads__:
-            # manualy enforce loading first to remove duplicates in payloads
-            # objects already assigned to the relationship may be add to payloads during revalidation
-            self._load()
-            self.extend(self.__payloads__)
-            self.__payloads__.clear()
-
     @staticmethod
     def ensure_loaded(
         func: Callable[Concatenate[RelationCollection[T], P], R],
@@ -435,23 +415,37 @@ class RelationCollection(list[T], Association[T]):
 
         active_materia.get().load_association(self)
 
-        # A: No provided, None
-        # B: provided value is empty, []
-        if not (self.__provided__):
+        if self.__provided__ is None:
+            super().extend(self.__payloads__)
+            self.__payloads__.clear()
             return self
 
-        # TODO: Better way to avoid duplication relationship append ?
-        self.__payloads__ = [
-            payload
-            for payload in self.__payloads__
-            if payload.__transmuter_provided__ not in set(self.__provided__)
-        ]
+        # B: provided value is empty, []
+        if self.__provided__:
+            # TODO: Better way to avoid duplication relationship append ?
+            self.__payloads__ = [
+                payload
+                for payload in self.__payloads__
+                if payload.__transmuter_provided__ not in set(self.__provided__)
+            ]
 
-        if not len(self.__provided__) == super().__len__():
+        if self.__payloads__:
+            self.__provided__.extend(
+                (
+                    payload.__transmuter_provided__
+                    if hasattr(payload, "__transmuter_provided__")
+                    else payload
+                    for payload in self.bless(self.__payloads__)
+                )
+            )
+            self.__payloads__.clear()
+
+        if self.__provided__ and not len(self.__provided__) == super().__len__():
             # If the length of __provided__ is not equal to the length of self,
             # it means some items were not blessed into transmuter objects.
             super().clear()
             super().extend(self.bless(self.__provided__))
+
         self.__loaded__ = True
 
         return self
@@ -476,6 +470,10 @@ class RelationCollection(list[T], Association[T]):
             for payload in self.__payloads__
             if payload.__transmuter_provided__ not in set(provided)
         ]
+
+        if self.__payloads__:
+            self.extend(self.__payloads__)
+            self.__payloads__.clear()
 
         if not len(provided) == super().__len__():
             # If the length of __provided__ is not equal to the length of self,

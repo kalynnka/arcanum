@@ -586,7 +586,11 @@ class TestSerializeToDict:
 
         def serialize():
             with session_factory() as session:
-                stmt = select(models.Author).where(models.Author.id.in_(author_ids))
+                stmt = (
+                    select(models.Author)
+                    .where(models.Author.id.in_(author_ids))
+                    .options(selectinload(models.Author.books))
+                )
                 authors = session.scalars(stmt).all()
                 return [{"id": a.id, "name": a.name, "field": a.field} for a in authors]
 
@@ -654,13 +658,17 @@ class TestSerializeToJson:
         import json
 
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
+        with session_factory() as session:
+            stmt = (
+                select(models.Author)
+                .where(models.Author.id.in_(author_ids))
+                .options(selectinload(models.Author.books))
+            )
+            authors = session.scalars(stmt).all()
 
         def serialize():
-            with session_factory() as session:
-                stmt = select(models.Author).where(models.Author.id.in_(author_ids))
-                authors = session.scalars(stmt).all()
-                data = [{"id": a.id, "name": a.name, "field": a.field} for a in authors]
-                return json.dumps(data)
+            data = [{"id": a.id, "name": a.name, "field": a.field} for a in authors]
+            return json.dumps(data)
 
         result = benchmark(serialize)
         assert len(result) > 0
