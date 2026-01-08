@@ -43,7 +43,7 @@ class TestSimpleValidation:
     def test_transmuter_scalar_validate(
         self, benchmark, simple_author_data: list[dict]
     ):
-        """Arcanum: model_validate on transmuters."""
+        """Arcanus: model_validate on transmuters."""
         data = simple_author_data
 
         def validate_all():
@@ -55,7 +55,7 @@ class TestSimpleValidation:
 
     @pytest.mark.benchmark(group="scalars-only-objects")
     def test_transmuter_scalar_adapter(self, benchmark, simple_author_data: list[dict]):
-        """Arcanum: TypeAdapter validation."""
+        """Arcanus: TypeAdapter validation."""
         data = simple_author_data
         adapter = TypeAdapter(list[transmuters.Author])
 
@@ -105,7 +105,7 @@ class TestNestedValidation:
 
     @pytest.mark.benchmark(group="nested-objects")
     def test_transmuter_nested_validate(self, benchmark, nested_book_data: list[dict]):
-        """Arcanum: Validates nested relationships."""
+        """Arcanus: Validates nested relationships."""
         data = nested_book_data
 
         def validate_all():
@@ -119,7 +119,7 @@ class TestNestedValidation:
 
     @pytest.mark.benchmark(group="nested-objects")
     def test_transmuter_nested_adapter(self, benchmark, nested_book_data: list[dict]):
-        """Arcanum: TypeAdapter validation."""
+        """Arcanus: TypeAdapter validation."""
         data = nested_book_data
         adapter = TypeAdapter(list[transmuters.Book])
 
@@ -174,7 +174,7 @@ class TestDeepNestedValidation:
 
     @pytest.mark.benchmark(group="deep-nested-objects")
     def test_transmuter_deep_validate(self, benchmark, deep_nested_data: list[dict]):
-        """Arcanum: Validates deep object graph."""
+        """Arcanus: Validates deep object graph."""
         data = deep_nested_data
 
         def validate_all():
@@ -188,7 +188,7 @@ class TestDeepNestedValidation:
 
     @pytest.mark.benchmark(group="deep-nested-objects")
     def test_transmuter_deep_adapter(self, benchmark, deep_nested_data: list[dict]):
-        """Arcanum: TypeAdapter validation."""
+        """Arcanus: TypeAdapter validation."""
         data = deep_nested_data
         adapter = TypeAdapter(list[transmuters.Author])
 
@@ -228,7 +228,7 @@ class TestScalarsOnlyDumpDict:
     def test_transmuter_scalars_dump_dict(
         self, benchmark, simple_author_flat_transmuters: list[transmuters.AuthorFlat]
     ):
-        """Arcanum: model_dump to dict (flat transmuter)."""
+        """Arcanus: model_dump to dict (flat transmuter)."""
         models = simple_author_flat_transmuters
 
         def dump_all():
@@ -263,7 +263,7 @@ class TestScalarsOnlyDumpJson:
     def test_transmuter_scalars_dump_json(
         self, benchmark, simple_author_flat_transmuters: list[transmuters.AuthorFlat]
     ):
-        """Arcanum: model_dump_json (flat transmuter)."""
+        """Arcanus: model_dump_json (flat transmuter)."""
         models = simple_author_flat_transmuters
 
         def dump_all():
@@ -299,7 +299,7 @@ class TestModelDumpDict:
     def test_transmuter_dump_dict(
         self, benchmark, simple_author_transmuters: list[transmuters.Author]
     ):
-        """Arcanum: model_dump to dict."""
+        """Arcanus: model_dump to dict."""
         models = simple_author_transmuters
 
         def dump_all():
@@ -333,7 +333,7 @@ class TestModelDumpJson:
     def test_transmuter_dump_json(
         self, benchmark, simple_author_transmuters: list[transmuters.Author]
     ):
-        """Arcanum: model_dump_json."""
+        """Arcanus: model_dump_json."""
         models = simple_author_transmuters
 
         def dump_all():
@@ -383,7 +383,7 @@ class TestFromAttributesSimple:
     def test_transmuter_from_attrs(
         self, benchmark, mock_author_objects: list[MockAuthor]
     ):
-        """Arcanum: from_attributes validation."""
+        """Arcanus: from_attributes validation."""
         objects = mock_author_objects
 
         def validate_all():
@@ -397,7 +397,7 @@ class TestFromAttributesSimple:
     def test_transmuter_from_attrs_adapter(
         self, benchmark, mock_author_objects: list[MockAuthor]
     ):
-        """Arcanum: TypeAdapter validation."""
+        """Arcanus: TypeAdapter validation."""
         objects = mock_author_objects
         adapter = TypeAdapter(list[transmuters.Author])
 
@@ -450,7 +450,7 @@ class TestFromAttributesNested:
     def test_transmuter_from_attrs_nested(
         self, benchmark, mock_nested_book_objects: list[MockBook]
     ):
-        """Arcanum: Validates nested attributes."""
+        """Arcanus: Validates nested attributes."""
         objects = mock_nested_book_objects
 
         def validate_all():
@@ -465,7 +465,7 @@ class TestFromAttributesNested:
     def test_transmuter_from_attrs_nested_adapter(
         self, benchmark, mock_nested_book_objects: list[MockBook]
     ):
-        """Arcanum: TypeAdapter validation."""
+        """Arcanus: TypeAdapter validation."""
         objects = mock_nested_book_objects
         adapter = TypeAdapter(list[transmuters.Book])
 

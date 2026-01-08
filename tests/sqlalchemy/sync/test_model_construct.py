@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 from sqlalchemy import Engine, select
 
-from arcanum.base import BaseTransmuter, validation_context
-from arcanum.materia.sqlalchemy import Session, SqlalchemyMateria
+from arcanus.base import BaseTransmuter, validation_context
+from arcanus.materia.sqlalchemy import Session, SqlalchemyMateria
 from tests import models
 from tests.transmuters import Author, Book
 

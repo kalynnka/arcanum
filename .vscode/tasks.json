@@ -9,7 +9,7 @@
                 "-m",
                 "pytest",
                 "tests/",
-                "--cov=arcanum",
+                "--cov=arcanus",
                 "--cov-report=html",
                 "--cov-report=term"
             ],

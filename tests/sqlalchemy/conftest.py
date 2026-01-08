@@ -9,8 +9,8 @@ import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from arcanum.association import Relation, RelationCollection
-from arcanum.materia.sqlalchemy import AsyncSession
+from arcanus.association import Relation, RelationCollection
+from arcanus.materia.sqlalchemy import AsyncSession
 from tests.models import Base
 from tests.transmuters import (
     Author,
@@ -26,9 +26,9 @@ from tests.transmuters import (
 # Use SQLite in-memory for tests - avoids external database dependency
 # Using shared cache mode to allow multiple connections to same in-memory database
 DB_URL = "sqlite:///:memory:?cache=shared"
-# DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanum"  # For local testing with Postgres
+# DB_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/arcanus"  # For local testing with Postgres
 ASYNC_DB_URL = "sqlite+aiosqlite:///:memory:?cache=shared"
-# ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanum"  # For local testing with Postgres
+# ASYNC_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/arcanus"  # For local testing with Postgres
 
 
 @pytest.fixture(scope="module", autouse=True)

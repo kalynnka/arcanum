@@ -1,12 +1,12 @@
-# Arcanum
+# Arcanus
 
-[![Tests](https://github.com/kalynnka/arcanum/actions/workflows/tests.yml/badge.svg)](https://github.com/kalynnka/arcanum/actions/workflows/tests.yml)
-[![Codecov](https://codecov.io/gh/kalynnka/arcanum/branch/main/graph/badge.svg)](https://codecov.io/gh/kalynnka/arcanum)
-[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/kalynnka/arcanum?utm_source=badge)
+[![Tests](https://github.com/kalynnka/arcanus/actions/workflows/tests.yml/badge.svg)](https://github.com/kalynnka/arcanus/actions/workflows/tests.yml)
+[![Codecov](https://codecov.io/gh/kalynnka/arcanus/branch/main/graph/badge.svg)](https://codecov.io/gh/kalynnka/arcanus)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/kalynnka/arcanus?utm_source=badge)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Arcanum** is a Python library designed to seamlessly bind Pydantic schemas with various datasources, eliminating the need to manually create templates, factories, and utilities repeatedly. It provides a unified interface for working with different data backends while maintaining type safety and validation through Pydantic.
+**Arcanus** is a Python library designed to seamlessly bind Pydantic schemas with various datasources, eliminating the need to manually create templates, factories, and utilities repeatedly. It provides a unified interface for working with different data backends while maintaining type safety and validation through Pydantic.
 
 > **⚠️ Warning:** This repository is still a work in progress and is currently at a minimum viable state. Expect bugs, breaking changes, and incomplete features.
 
@@ -23,7 +23,7 @@
 
 ## Materia Types
 
-Arcanum supports different "Materia" backends to handle data:
+Arcanus supports different "Materia" backends to handle data:
 
 ### NoOpMateria
 
@@ -32,8 +32,8 @@ A no-operation materia that's perfect for testing and development. It allows wor
 > **Note:** NoOpMateria is automatically active by default - no manual blessing required! Simply define transmuter classes and they'll work without any backend setup.
 
 ```python
-from arcanum.base import BaseTransmuter, Identity
-from arcanum.association import Relation, RelationCollection, Relationships
+from arcanus.base import BaseTransmuter, Identity
+from arcanus.association import Relation, RelationCollection, Relationships
 from pydantic import Field
 from typing import Annotated, Optional
 
@@ -65,7 +65,7 @@ print(list(author.books))  # [Book(...)]
 
 Connect schemas to SQLAlchemy ORM models for full database functionality, **enabling operations on Pydantic transmuter objects just like ORM objects**, seamlessly gluing together the best of both worlds.
 
-> **⚠️ Important:** Use `arcanum.database.Session` instead of SQLAlchemy's native `sqlalchemy.orm.Session`. The arcanum Session handles the automatic "blessing" of ORM objects into transmuter schemas.
+> **⚠️ Important:** Use `arcanus.database.Session` instead of SQLAlchemy's native `sqlalchemy.orm.Session`. The arcanus Session handles the automatic "blessing" of ORM objects into transmuter schemas.
 
 #### Bridging Pydantic and SQLAlchemy
 
@@ -95,10 +95,10 @@ Define SQLAlchemy ORM models and link them to transmuter schemas:
 ```python
 from sqlalchemy import ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
-from arcanum.base import BaseTransmuter, Identity
-from arcanum.association import Relation, RelationCollection, Relationships
-from arcanum.database import Session
+from arcanus.materia.sqlalchemy.base import SqlalchemyMateria
+from arcanus.base import BaseTransmuter, Identity
+from arcanus.association import Relation, RelationCollection, Relationships
+from arcanus.database import Session
 from pydantic import Field
 from typing import Annotated, Optional
 
@@ -151,7 +151,7 @@ Base.metadata.create_all(engine)
 
 #### Transmuter-ORM Proxying
 
-All objects retrieved from arcanum Session are transmuter instances, wrapping the origianl ORM objects.
+All objects retrieved from arcanus Session are transmuter instances, wrapping the origianl ORM objects.
 
 ```python
 with Session(engine) as session:
@@ -345,13 +345,13 @@ for partition in session.partitions(Author, size=100):
 
 ### Async Support
 
-Arcanum supports asynchronous operations using SQLAlchemy's async engine. Use `arcanum.database.AsyncSession` instead of `sqlalchemy.ext.asyncio.AsyncSession`.
+Arcanus supports asynchronous operations using SQLAlchemy's async engine. Use `arcanus.database.AsyncSession` instead of `sqlalchemy.ext.asyncio.AsyncSession`.
 
 All operations work identically to the sync version - just use `AsyncSession` and await async operations:
 
 ```python
 from sqlalchemy.ext.asyncio import create_async_engine
-from arcanum.database import AsyncSession
+from arcanus.database import AsyncSession
 
 # Create async engine
 async_engine = create_async_engine(
@@ -377,7 +377,7 @@ async with AsyncSession(async_engine, expire_on_commit=True) as session:
 
 #### Relationship Loading in Async
 
-SQLAlchemy's relationship loading strategies work with arcanum transmuters. The await syntax depends on the loading strategy:
+SQLAlchemy's relationship loading strategies work with arcanus transmuters. The await syntax depends on the loading strategy:
 
 **Lazy loading (select)** - Requires await to trigger the query, otherwise a greenlet issue will be raised:
 ```python

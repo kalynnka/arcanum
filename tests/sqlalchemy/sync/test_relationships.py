@@ -19,8 +19,8 @@ from sqlalchemy import Engine, select
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import joinedload, raiseload, selectinload
 
-from arcanum.association import Relation, RelationCollection
-from arcanum.materia.sqlalchemy import Session
+from arcanus.association import Relation, RelationCollection
+from arcanus.materia.sqlalchemy import Session
 from tests import models
 from tests.transmuters import (
     Author,
@@ -672,7 +672,7 @@ class TestRaiseOnSQLBehavior:
             )
             loaded_book = session.execute(stmt).scalars().one()
 
-            # Accessing author should raise RuntimeError (Arcanum wraps InvalidRequestError)
+            # Accessing author should raise RuntimeError (Arcanus wraps InvalidRequestError)
             with pytest.raises(
                 InvalidRequestError, match="loading strategy is set to 'raise'"
             ):
@@ -705,7 +705,7 @@ class TestRaiseOnSQLBehavior:
             )
             loaded_author = session.execute(stmt).scalars().one()
 
-            # Accessing books collection should raise RuntimeError (Arcanum wraps InvalidRequestError)
+            # Accessing books collection should raise RuntimeError (Arcanus wraps InvalidRequestError)
             # We need to iterate or access elements to trigger the lazy load
             with pytest.raises(
                 InvalidRequestError, match="loading strategy is set to 'raise'"
@@ -1107,7 +1107,7 @@ class TestSelectinloadWithORMRelationships:
     """Test selectinload behavior with various ORM relationship configurations.
 
     These tests verify that selectinload works correctly with different
-    relationship types and configurations when combined with Arcanum's
+    relationship types and configurations when combined with Arcanus's
     Transmuter validation system.
     """
 

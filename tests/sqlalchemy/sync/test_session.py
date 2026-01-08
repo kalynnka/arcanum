@@ -20,8 +20,8 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.exc import NoResultFound
 
-from arcanum.base import BaseTransmuter
-from arcanum.materia.sqlalchemy import Session
+from arcanus.base import BaseTransmuter
+from arcanus.materia.sqlalchemy import Session
 from tests.transmuters import Author, Book, BookCategory, Category, Publisher
 
 

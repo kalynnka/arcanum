@@ -17,8 +17,8 @@ from pydantic import ValidationInfo
 from pydantic_core import core_schema
 
 if TYPE_CHECKING:
-    from arcanum.association import Association
-    from arcanum.base import BaseTransmuter, TransmuterMetaclass
+    from arcanus.association import Association
+    from arcanus.base import BaseTransmuter, TransmuterMetaclass
 
 M = TypeVar("M", bound=Any)
 A = TypeVar("A", bound="Association")

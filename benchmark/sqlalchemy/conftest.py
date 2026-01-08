@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import sessionmaker
 
-from arcanum.materia.sqlalchemy import Session as ArcanumSession
-from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
+from arcanus.materia.sqlalchemy import Session as arcanusSession
+from arcanus.materia.sqlalchemy.base import SqlalchemyMateria
 from tests.models import Author as AuthorModel
 from tests.models import Base
 from tests.models import Book as BookModel
@@ -50,9 +50,9 @@ def session_factory(engine: Engine) -> sessionmaker:
 
 
 @pytest.fixture(scope="session")
-def arcanum_session_factory(engine: Engine) -> sessionmaker:
-    """Create an arcanum session factory."""
-    return sessionmaker(bind=engine, expire_on_commit=False, class_=ArcanumSession)
+def arcanus_session_factory(engine: Engine) -> sessionmaker:
+    """Create an arcanus session factory."""
+    return sessionmaker(bind=engine, expire_on_commit=False, class_=arcanusSession)
 
 
 @pytest.fixture(scope="module", autouse=True)

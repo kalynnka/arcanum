@@ -1,7 +1,7 @@
 """
 SQLAlchemy Materia Benchmark Tests - ORM CRUD Operations
 
-This module benchmarks arcanum's SQLAlchemy materia against common patterns
+This module benchmarks arcanus's SQLAlchemy materia against common patterns
 for CRUD API endpoints. Comparing three approaches:
 
 1. PURE SQLALCHEMY (Baseline)
@@ -11,7 +11,7 @@ for CRUD API endpoints. Comparing three approaches:
    - Validate with Pydantic first, then model_dump to create ORM objects
    - This is what most developers do today
 
-3. ARCANUM (Combined)
+3. arcanus (Combined)
    - Use transmuter with full Pydantic validation and SQLAlchemy integration
    - Validates and produces ORM-integrated objects in one step
 
@@ -81,15 +81,15 @@ class TestCreateSingleAuthor:
         benchmark(create)
 
     @pytest.mark.benchmark(group="create-single-author")
-    def test_arcanum_create(
-        self, benchmark, arcanum_session_factory, create_author_data
+    def test_arcanus_create(
+        self, benchmark, arcanus_session_factory, create_author_data
     ):
-        """Arcanum: Transmuter creation."""
+        """arcanus: Transmuter creation."""
         data = random.choice(create_author_data)
         author_data = {"name": data["name"], "field": data["write_field"]}
 
         def create():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 author = Author(**author_data)
                 session.add(author)
                 session.flush()
@@ -159,14 +159,14 @@ class TestCreateNestedBook:
         benchmark(create)
 
     @pytest.mark.benchmark(group="create-nested-book")
-    def test_arcanum_create_nested(
-        self, benchmark, arcanum_session_factory, create_nested_book_data
+    def test_arcanus_create_nested(
+        self, benchmark, arcanus_session_factory, create_nested_book_data
     ):
-        """Arcanum: Transmuter with nested objects."""
+        """arcanus: Transmuter with nested objects."""
         book_data = random.choice(create_nested_book_data)
 
         def create():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 book = Book(**book_data)
                 session.add(book)
                 session.flush()
@@ -218,18 +218,18 @@ class TestReadSingleAuthor:
         benchmark(read)
 
     @pytest.mark.benchmark(group="read-single-author")
-    def test_arcanum_read(
+    def test_arcanus_read(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Query returns transmuter."""
+        """arcanus: Query returns transmuter."""
         author = random.choice(seeded_authors)
         author_id = author.id
 
         def read():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 result = session.get(Author, author_id)
                 assert result is not None
 
@@ -291,16 +291,16 @@ class TestReadManyAuthors:
         benchmark(read)
 
     @pytest.mark.benchmark(group="read-many-authors")
-    def test_arcanum_read_many(
+    def test_arcanus_read_many(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Query returns transmuters."""
+        """arcanus: Query returns transmuters."""
 
         def read():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 stmt = (
                     select(Author)
                     .options(selectinload(Author["books"]))
@@ -374,18 +374,18 @@ class TestReadNestedBook:
         benchmark(read)
 
     @pytest.mark.benchmark(group="read-nested-book")
-    def test_arcanum_read_nested(
+    def test_arcanus_read_nested(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_books: list[models.Book],
     ):
-        """Arcanum: Query with eager load."""
+        """arcanus: Query with eager load."""
         book = random.choice(seeded_books)
         book_id = book.id
 
         def read():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 stmt = (
                     select(Book)
                     .where(Book["id"] == book_id)
@@ -454,20 +454,20 @@ class TestUpdateSingleAuthor:
         benchmark(update)
 
     @pytest.mark.benchmark(group="update-single-author")
-    def test_arcanum_update(
+    def test_arcanus_update(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Transmuter update."""
+        """arcanus: Transmuter update."""
         author = random.choice(seeded_authors)
         author_id = author.id
         update_data = {"name": "Updated Name", "write_field": "Physics"}
         AuthorUpdate = Author.Update
 
         def update():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 updated = AuthorUpdate(**update_data)
                 transmuter = session.get(Author, author_id)
                 transmuter.absorb(updated)
@@ -539,18 +539,18 @@ class TestUpdateManyAuthors:
         benchmark(update)
 
     @pytest.mark.benchmark(group="update-many-authors")
-    def test_arcanum_update_many(
+    def test_arcanus_update_many(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Bulk update."""
+        """arcanus: Bulk update."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         AuthorUpdate = Author.Update
 
         def update():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 stmt = select(Author).where(Author["id"].in_(author_ids))
                 authors = session.scalars(stmt).all()
                 for author in authors:
@@ -615,17 +615,17 @@ class TestSerializeToDict:
         assert len(result) == BATCH_SIZE
 
     @pytest.mark.benchmark(group="serialize-dict")
-    def test_arcanum_serialize_dict(
+    def test_arcanus_serialize_dict(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: model_dump."""
+        """arcanus: model_dump."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def serialize():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 stmt = select(Author).where(Author["id"].in_(author_ids))
                 authors = session.scalars(stmt).all()
                 return [a.model_dump(exclude={"books", "test_id"}) for a in authors]
@@ -690,20 +690,20 @@ class TestSerializeToJson:
         assert len(result) > 0
 
     @pytest.mark.benchmark(group="serialize-json")
-    def test_arcanum_serialize_json(
+    def test_arcanus_serialize_json(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Transmuter model_dump_json."""
+        """arcanus: Transmuter model_dump_json."""
         from pydantic import TypeAdapter
 
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
         adapter = TypeAdapter(list[Author])
 
         def serialize():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 stmt = select(Author).where(Author["id"].in_(author_ids))
                 authors = session.scalars(stmt).all()
                 return adapter.dump_json(
@@ -742,17 +742,17 @@ class TestScalarsOnlySerializeToDict:
         assert "name" in result[0]
 
     @pytest.mark.benchmark(group="serialize-scalars-only-dict")
-    def test_arcanum_scalars_dump_dict(
+    def test_arcanus_scalars_dump_dict(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Load transmuter, dump to dict (excluding relationships)."""
+        """arcanus: Load transmuter, dump to dict (excluding relationships)."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def dump_all():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 stmt = select(Author).where(Author["id"].in_(author_ids))
                 authors = session.scalars(stmt).all()
                 return [a.model_dump(exclude={"books"}) for a in authors]
@@ -788,17 +788,17 @@ class TestScalarsOnlySerializeToJson:
         assert len(result) == BATCH_SIZE
 
     @pytest.mark.benchmark(group="serialize-scalars-only-json")
-    def test_arcanum_scalars_dump_json(
+    def test_arcanus_scalars_dump_json(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Load transmuter, dump to JSON (excluding relationships)."""
+        """arcanus: Load transmuter, dump to JSON (excluding relationships)."""
         author_ids = [a.id for a in seeded_authors[:BATCH_SIZE]]
 
         def dump_all():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 stmt = select(Author).where(Author["id"].in_(author_ids))
                 authors = session.scalars(stmt).all()
                 return [a.model_dump_json(exclude={"books"}) for a in authors]
@@ -859,18 +859,18 @@ class TestRoundtripAuthor:
         benchmark(roundtrip)
 
     @pytest.mark.benchmark(group="roundtrip-author")
-    def test_arcanum_roundtrip(
+    def test_arcanus_roundtrip(
         self,
         benchmark,
-        arcanum_session_factory,
+        arcanus_session_factory,
         seeded_authors: list[models.Author],
     ):
-        """Arcanum: Load transmuter, modify, flush."""
+        """arcanus: Load transmuter, modify, flush."""
         author = random.choice(seeded_authors)
         author_id = author.id
 
         def roundtrip():
-            with arcanum_session_factory() as session:
+            with arcanus_session_factory() as session:
                 transmuter = session.get(Author, author_id)
                 transmuter.name = f"Roundtrip Updated {author_id}"
                 transmuter.field = "Physics"

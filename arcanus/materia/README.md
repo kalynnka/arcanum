@@ -145,7 +145,7 @@ flowchart LR
 
 ```python
 from weakref import ref
-from arcanum.base import TransmuterProxiedMixin
+from arcanus.base import TransmuterProxiedMixin
 
 class YourProviderBase(TransmuterProxiedMixin):
     """Base class for your provider objects."""
@@ -159,7 +159,7 @@ class YourProviderBase(TransmuterProxiedMixin):
 
 ```python
 from weakref import WeakKeyDictionary
-from arcanum.base import validation_context
+from arcanus.base import validation_context
 
 class YourSession:
     _transmuter_context: WeakKeyDictionary[Any, BaseTransmuter]
@@ -180,7 +180,7 @@ class YourSession:
 3. **Materia Registration** - Register your provider types:
 
 ```python
-from arcanum.materia.base import BaseMateria
+from arcanus.materia.base import BaseMateria
 
 class YourMateria(BaseMateria):
     def bless(self):

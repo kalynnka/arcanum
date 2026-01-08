@@ -7,9 +7,9 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import InvalidRequestError, MissingGreenlet
 from sqlalchemy.util import greenlet_spawn
 
-from arcanum.association import Association
-from arcanum.base import BaseTransmuter
-from arcanum.materia.base import TM, BaseMateria
+from arcanus.association import Association
+from arcanus.base import BaseTransmuter
+from arcanus.materia.base import TM, BaseMateria
 
 
 class LoadedData: ...
