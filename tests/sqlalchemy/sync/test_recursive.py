@@ -44,8 +44,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import Engine, select
 
-from arcanum.association import Relation
-from arcanum.materia.sqlalchemy import Session
+from arcanus.association import Relation
+from arcanus.materia.sqlalchemy import Session
 from tests.transmuters import (
     Company,
     Department,

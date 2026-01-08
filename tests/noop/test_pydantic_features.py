@@ -20,13 +20,13 @@ import pytest
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing_extensions import NotRequired, TypedDict
 
-from arcanum.association import (
+from arcanus.association import (
     Relation,
     RelationCollection,
     Relationship,
     Relationships,
 )
-from arcanum.base import BaseTransmuter, Identity
+from arcanus.base import BaseTransmuter, Identity
 from tests.transmuters import Author, Book, Publisher, Review
 
 

@@ -66,14 +66,14 @@ jobs:
         run: uv sync --dev
 
       - name: Run unit tests with coverage
-        run: uv run pytest tests/ -v --tb=short --cov=arcanum --cov-report=xml --cov-report=term
+        run: uv run pytest tests/ -v --tb=short --cov=arcanus --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           flags: unittests
-          name: codecov-arcanum
+          name: codecov-arcanus
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

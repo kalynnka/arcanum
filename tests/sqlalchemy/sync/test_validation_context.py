@@ -14,7 +14,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine, select
 
-from arcanum.materia.sqlalchemy import Session
+from arcanus.materia.sqlalchemy import Session
 from tests.transmuters import Author, Book, Publisher
 
 

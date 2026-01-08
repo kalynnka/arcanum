@@ -13,8 +13,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import Engine
 
-from arcanum.materia.sqlalchemy import Session
-from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
+from arcanus.materia.sqlalchemy import Session
+from arcanus.materia.sqlalchemy.base import SqlalchemyMateria
 from tests import models
 from tests.transmuters import Author, Book, Publisher
 
@@ -126,7 +126,7 @@ class TestBlessingRules:
 
     def test_transmuter_blessed_once(self):
         """Test that a transmuter class can only be blessed with one ORM type."""
-        from arcanum.base import BaseTransmuter
+        from arcanus.base import BaseTransmuter
 
         # This should work - fresh materia
         test_materia = SqlalchemyMateria()
@@ -143,7 +143,7 @@ class TestBlessingRules:
 
     def test_different_transmuters_same_orm(self):
         """Test that different transmuter classes can be blessed with the same ORM."""
-        from arcanum.base import BaseTransmuter
+        from arcanus.base import BaseTransmuter
 
         test_materia = SqlalchemyMateria()
 
@@ -170,7 +170,7 @@ class TestBlessingRules:
 
     def test_unblessed_transmuter_no_orm(self):
         """Test that unblessed transmuters don't have ORM objects."""
-        from arcanum.base import BaseTransmuter
+        from arcanus.base import BaseTransmuter
 
         class UnblessedTransmuter(BaseTransmuter):
             name: str

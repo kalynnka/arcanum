@@ -21,7 +21,7 @@ from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import raiseload, selectinload
 
-from arcanum.materia.sqlalchemy import AsyncSession
+from arcanus.materia.sqlalchemy import AsyncSession
 from tests import models
 from tests.transmuters import Author, Book, BookCategory, Category, Publisher
 

@@ -5,7 +5,7 @@ import copy
 import pytest
 from pydantic import ValidationError
 
-from arcanum.association import Relation, RelationCollection
+from arcanus.association import Relation, RelationCollection
 from tests.transmuters import Author, Book, Publisher, Translator
 
 """Test association fields (Relation and RelationCollection) with NoOpMateria.

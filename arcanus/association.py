@@ -25,13 +25,13 @@ from typing import (
 from pydantic import BaseModel, Field, GetCoreSchemaHandler, TypeAdapter
 from pydantic_core import core_schema
 
-from arcanum.materia.base import active_materia
-from arcanum.utils import get_cached_adapter
+from arcanus.materia.base import active_materia
+from arcanus.utils import get_cached_adapter
 
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
-    from arcanum.base import BaseTransmuter
+    from arcanus.base import BaseTransmuter
 
 A = TypeVar("A")
 T = TypeVar("T", bound="BaseTransmuter")

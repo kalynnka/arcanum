@@ -31,8 +31,8 @@ from pydantic._internal._generics import PydanticGenericMetadata
 from pydantic._internal._model_construction import ModelMetaclass, NoInitField
 from pydantic.fields import Field, FieldInfo, PrivateAttr
 
-from arcanum.association import Association
-from arcanum.materia.base import (
+from arcanus.association import Association
+from arcanus.materia.base import (
     BaseMateria,
     BidirectonDict,
     NoOpMateria,

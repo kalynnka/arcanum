@@ -35,9 +35,9 @@ from sqlalchemy.engine.row import RowMapping
 from sqlalchemy.sql.base import _generative
 from sqlalchemy.util.concurrency import greenlet_spawn
 
-from arcanum.base import BaseTransmuter
-from arcanum.materia.base import active_materia
-from arcanum.utils import get_cached_adapter
+from arcanus.base import BaseTransmuter
+from arcanus.materia.base import active_materia
+from arcanus.utils import get_cached_adapter
 
 _T = TypeVar("_T", bound=Any)
 _TP = TypeVar("_TP", bound=tuple[Any, ...])

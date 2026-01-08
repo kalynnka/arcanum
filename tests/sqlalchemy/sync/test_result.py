@@ -16,7 +16,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import selectinload
 
-from arcanum.materia.sqlalchemy import Session
+from arcanus.materia.sqlalchemy import Session
 from tests.transmuters import Author, Book, Category, Publisher
 
 

@@ -3,11 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "arcanum"
+name = "arcanus"
 version = "0.1.0"
 description = "Glue to bind pydantic schemas with various datasources"
 authors = [
-    {name = "arcanum", email = "arcanum@example.com"},
+    {name = "arcanus", email = "arcanus@example.com"},
 ]
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -40,9 +40,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kalynnka/arcanum"
-Repository = "https://github.com/kalynnka/arcanum"
-Issues = "https://github.com/kalynnka/arcanum/issues"
+Homepage = "https://github.com/kalynnka/arcanus"
+Repository = "https://github.com/kalynnka/arcanus"
+Issues = "https://github.com/kalynnka/arcanus/issues"
 
 [dependency-groups]
 dev = [

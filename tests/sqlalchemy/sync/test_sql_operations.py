@@ -15,7 +15,7 @@ from __future__ import annotations
 from sqlalchemy import Engine, and_, delete, func, insert, or_, select, update
 from sqlalchemy.orm import joinedload, selectinload
 
-from arcanum.materia.sqlalchemy import Session
+from arcanus.materia.sqlalchemy import Session
 from tests import models
 from tests.transmuters import Author, Book, Category, Publisher
 

@@ -51,15 +51,15 @@ from sqlalchemy.sql.base import ExecutableOption, _NoArg
 from sqlalchemy.sql.dml import Delete, Insert, Update, UpdateBase
 from sqlalchemy.sql.selectable import ForUpdateArg, ForUpdateParameter, TypedReturnsRows
 
-from arcanum.base import (
+from arcanus.base import (
     BaseTransmuter,
     TransmuterProxied,
     ValidateContextGeneratorT,
     ValidationContextT,
     validation_context,
 )
-from arcanum.materia.base import active_materia
-from arcanum.materia.sqlalchemy.result import (
+from arcanus.materia.base import active_materia
+from arcanus.materia.sqlalchemy.result import (
     _T,
     AdaptedResult,
     AsyncAdaptedResult,

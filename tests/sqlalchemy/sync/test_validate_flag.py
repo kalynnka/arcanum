@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from sqlalchemy import Engine
 
-from arcanum.materia.base import active_materia
-from arcanum.materia.sqlalchemy import SqlalchemyMateria
+from arcanus.materia.base import active_materia
+from arcanus.materia.sqlalchemy import SqlalchemyMateria
 
 
 def test_validate_flag_default_true(engine: Engine):

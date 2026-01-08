@@ -12,7 +12,7 @@ from sqlalchemy.orm import (
     relationship,
 )
 
-from arcanum.base import TransmuterProxiedMixin
+from arcanus.base import TransmuterProxiedMixin
 
 
 class Base(DeclarativeBase, TransmuterProxiedMixin):

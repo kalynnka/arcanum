@@ -5,14 +5,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from arcanum.association import (
+from arcanus.association import (
     Relation,
     RelationCollection,
     Relationship,
     Relationships,
 )
-from arcanum.base import BaseTransmuter, Identity
-from arcanum.materia.sqlalchemy.base import SqlalchemyMateria
+from arcanus.base import BaseTransmuter, Identity
+from arcanus.materia.sqlalchemy.base import SqlalchemyMateria
 from tests import models
 
 sqlalchemy_materia = SqlalchemyMateria()
